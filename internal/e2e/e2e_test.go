@@ -252,6 +252,12 @@ func TestFullFlow(t *testing.T) {
 	if j := e.cmd(id, "fix.apply", map[string]any{"id": "format_disk; rm -rf /"}); j.Status != "error" {
 		t.Fatalf("fix.apply must refuse unknown ids: %+v", j)
 	}
+	if st, b := e.do("POST", "/api/devices/"+id+"/update-software", map[string]string{"software": "no-such-program"}); st != 409 || !strings.Contains(string(b), "no-such-program") {
+		t.Fatalf("update-software for an unknown program: %d %s", st, b)
+	}
+	if st, _ := e.do("POST", "/api/devices/"+id+"/update-software", map[string]string{"software": " "}); st != 400 {
+		t.Fatalf("update-software must reject an empty name: %d", st)
+	}
 	if st, b := e.do("GET", "/healthz", nil); st != 200 || !strings.Contains(string(b), `"ok"`) {
 		t.Fatalf("healthz: %d %s", st, b)
 	}

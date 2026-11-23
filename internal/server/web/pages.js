@@ -260,6 +260,7 @@ async function viewSecurity(tab) {
 // means on its own platform and refuses anything it does not know.
 const FIXABLE = new Set(['firewall', 'av_realtime', 'av_signatures', 'smb1', 'rdp', 'uac', 'guest', 'gatekeeper', 'autoupdate', 'auto_updates', 'ntp']);
 function fixButton(x) {
+  if (x.kind === 'cve' && x.software) return softwareButton(x);
   const id = x.kind === 'config' && (x.key || '').startsWith('cfg:') ? x.key.slice(4) : '';
   if (!FIXABLE.has(id)) return null;
   const b = h('button', { class: 'small primary', style: { marginTop: '6px' } }, 'Fix on ' + plural(x.devices.length, 'PC'));
@@ -275,6 +276,23 @@ function fixButton(x) {
     }
     if (ok) toast('Fixed on ' + plural(ok, 'PC') + '. Rescanning.', 'ok');
     if (bad.length) toast(bad.slice(0, 3).join('; '), 'bad');
+  }));
+  return b;
+}
+
+// A vulnerable program is fixed by updating it. The server finds the update through winget or the package manager and
+// says plainly when the vendor has not published one.
+function softwareButton(x) {
+  const b = h('button', { class: 'small primary', style: { marginTop: '6px' } }, 'Update on ' + plural(x.devices.length, 'PC'));
+  b.addEventListener('click', action(b, async () => {
+    if (!confirm('Update ' + x.software + ' on ' + plural(x.devices.length, 'PC') + '?')) return;
+    let ok = 0; const bad = [];
+    for (const d of x.devices) {
+      try { await api('POST', '/api/devices/' + d.id + '/update-software', { software: x.software }); ok++; }
+      catch (e) { bad.push(d.name + ': ' + e.message); }
+    }
+    if (ok) toast(x.software + ' updated on ' + plural(ok, 'PC') + '. Rescanning.', 'ok');
+    if (bad.length) toast(bad.slice(0, 2).join('; '), 'bad');
   }));
   return b;
 }
