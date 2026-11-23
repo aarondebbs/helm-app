@@ -141,9 +141,9 @@ foreach ($u in $res.Updates) {
   }
 }
 if ($coll.Count -eq 0) { Write-Output 'RESULT:{"installed":0,"resultCode":2,"rebootRequired":false,"items":[]}'; exit 0 }
-Write-Output "PROGRESS:Downloading $($coll.Count) update(s)..."
+Write-Output "PROGRESS:5:Downloading $($coll.Count) update(s)..."
 $dl = $session.CreateUpdateDownloader(); $dl.Updates = $coll; $null = $dl.Download()
-Write-Output "PROGRESS:Installing..."
+Write-Output "PROGRESS:50:Installing..."
 $inst = $session.CreateUpdateInstaller(); $inst.Updates = $coll
 $ir = $inst.Install()
 $items = @()

@@ -26,6 +26,7 @@ type cmdCtx struct {
 	id       string
 	args     json.RawMessage
 	progress func(string)
+	pct      func(int, string) // progress with a percentage (0-100)
 }
 
 type handlerFn func(ctx context.Context, c *cmdCtx) (any, error)
@@ -140,6 +141,8 @@ func (a *Agent) runCommand(ctx context.Context, f proto.Frame) {
 		}()
 		c := &cmdCtx{a: a, id: f.ID, args: f.Args, progress: func(m string) {
 			a.sendFrame(proto.Frame{T: proto.TProgress, ID: f.ID, Msg: m})
+		}, pct: func(p int, m string) {
+			a.sendFrame(proto.Frame{T: proto.TProgress, ID: f.ID, Msg: m, Pct: p})
 		}}
 		data, err := h(ctx, c)
 		reply(data, err)
@@ -406,7 +409,14 @@ func (a *Agent) cmdUpdatesInstall(ctx context.Context, c *cmdCtx) (any, error) {
 		onLine: func(ln string) {
 			switch {
 			case strings.HasPrefix(ln, "PROGRESS:"):
-				c.progress(strings.TrimPrefix(ln, "PROGRESS:"))
+				m := strings.TrimPrefix(ln, "PROGRESS:")
+				if p, rest, ok := strings.Cut(m, ":"); ok {
+					if n, err := strconv.Atoi(p); err == nil && n >= 0 && n <= 100 {
+						c.pct(n, rest)
+						return
+					}
+				}
+				c.progress(m)
 			case strings.HasPrefix(ln, "RESULT:"):
 				result = json.RawMessage(strings.TrimPrefix(ln, "RESULT:"))
 			}

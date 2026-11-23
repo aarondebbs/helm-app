@@ -306,3 +306,14 @@ html[data-theme="dark"] .toast { background: #1d2b29; }
 @media (max-width: 720px) { .userbtn .uname { display: none; } .topbar .btn.primary { display: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 @media print { .sidebar, .topbar, .bulkbar, button { display: none !important; } .container { padding: 0; } html[data-theme="dark"] { color-scheme: light; } }
+
+.sec { margin: 22px 0 8px; font-size: 14px; font-weight: 650; color: var(--text2); }
+.taskrow { padding: 14px 18px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; }
+.taskrow:last-child { border-bottom: 0; }
+.tasktop { display: flex; gap: 6px; align-items: baseline; } .tasktop .right { margin-left: auto; }
+.taskbar { display: flex; align-items: center; gap: 10px; } .taskbar .bar { flex: 1; height: 8px; } .taskbar .mono { min-width: 40px; text-align: right; }
+.bar.indet > i { width: 30%; animation: indet 1.4s ease-in-out infinite; }
+@keyframes indet { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .bar.indet > i { animation: none; width: 100%; opacity: .5; } }
+.stages { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--panel2); }

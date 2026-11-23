@@ -183,6 +183,7 @@ type dbData struct {
 	Inventory map[string]*InvRec   `json:"inventory,omitempty"`
 	Accepted  map[string]AcceptRec `json:"accepted,omitempty"` // finding key -> accepted risk
 	NoFix     map[string]time.Time `json:"noFix,omitempty"`    // "deviceID|software" -> when an update was found to be unavailable
+	Tasks     []TaskRec            `json:"tasks,omitempty"`    // finished tasks of the last week
 	Patched   map[string]string    `json:"patched,omitempty"`  // device id -> date (YYYY-MM-DD) of its last window run
 }
 

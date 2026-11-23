@@ -630,7 +630,11 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			}
 		case proto.TProgress:
 			if j := s.hub.snapshot(f.ID); j != nil && j.DeviceID == a.ID {
-				s.hub.progress(f.ID, f.Msg)
+				pct := -1
+				if f.Pct > 0 {
+					pct = f.Pct
+				}
+				s.hub.progress(f.ID, f.Msg, pct)
 			}
 		case proto.TOpenFail:
 			s.hub.refuse(f.SID, f.Err)

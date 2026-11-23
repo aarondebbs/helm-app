@@ -418,7 +418,11 @@ func (s *Server) startScan(deviceID, actor string) error {
 
 func (s *Server) collectScan(deviceID, actor string) {
 	sc := &Scan{DeviceID: deviceID, At: time.Now().UTC()}
+	tid := "scan-" + randHex(6)
+	s.taskStart(tid, "scan", "Security scan", deviceID, actor)
+	s.taskUpdate(tid, 0, "Starting scan")
 	var mu sync.Mutex
+	steps := 0
 	var wg sync.WaitGroup
 	addErr := func(what string, err error) {
 		mu.Lock()
@@ -438,6 +442,16 @@ func (s *Server) collectScan(deviceID, actor string) {
 			if err != nil {
 				addErr(name, err)
 			}
+			mu.Lock()
+			steps++
+			n := steps
+			mu.Unlock()
+			label := map[string]string{"scan.software": "Software inventory", "scan.config": "Configuration checks", "scan.ports": "Open ports"}[name]
+			msg := label + " done"
+			if err != nil {
+				msg = label + " failed: " + firstLine(err.Error(), 120)
+			}
+			s.taskUpdate(tid, n*20, msg)
 		}()
 	}
 	run("scan.software", func(raw json.RawMessage) error {
@@ -461,6 +475,7 @@ func (s *Server) collectScan(deviceID, actor string) {
 		return json.Unmarshal(raw, &sc.Ports)
 	})
 	wg.Wait()
+	s.taskUpdate(tid, 60, "Checking for missing updates")
 	if raw, err := s.callCmd(deviceID, "updates.check", nil, actor); err != nil {
 		addErr("updates.check", err)
 	} else {
@@ -474,6 +489,14 @@ func (s *Server) collectScan(deviceID, actor string) {
 			sc.Patches, sc.RebootPending, sc.HavePatches = u.Updates, u.RebootPending, true
 		}
 	}
+	s.taskUpdate(tid, 90, "Matching known vulnerabilities")
+	defer func() {
+		msg := ""
+		if len(sc.Errors) > 0 && !sc.HaveSoftware && !sc.HaveChecks && !sc.HavePorts && !sc.HavePatches {
+			msg = sc.Errors[0]
+		}
+		s.taskFinish(tid, msg)
+	}()
 	sc.Finished = time.Now().UTC()
 	switch {
 	case !sc.HaveSoftware && !sc.HaveChecks && !sc.HavePorts && !sc.HavePatches:

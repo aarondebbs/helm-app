@@ -822,8 +822,45 @@ function viewEnroll() {
 // ---------- activity ----------
 route(/^\/activity$/, viewActivity);
 async function viewActivity() {
-  const body = h('div', { class: 'panel flush' }, h('div', { style: { padding: '20px' } }, h('span', { class: 'spinner' })));
-  shell('activity', [pageHead('Activity log', 'Everything done through this console, newest first', h('a', { class: 'btn', href: '/api/reports/audit', download: '' }, 'Export CSV')), body]);
+  const runBox = h('div', { class: 'panel' });
+  const recBox = h('div', { class: 'panel flush' });
+  const logBox = h('div', { class: 'panel flush' });
+  shell('activity', [pageHead('Activity', 'What is running now, what finished this week, and everything done through this console', h('a', { class: 'btn', href: '/api/reports/audit', download: '' }, 'Export CSV')),
+    h('h3', { class: 'sec' }, 'Running now'), runBox, h('h3', { class: 'sec' }, 'Last 7 days'), recBox, h('h3', { class: 'sec' }, 'Audit log'), logBox]);
+  const open = new Set();
+  const elapsed = t => fmtDur(Math.max(0, Math.round((Date.now() - new Date(t)) / 1000)));
+  const pctBar = t => t.percent >= 0
+    ? h('div', { class: 'taskbar' }, h('div', { class: 'bar' }, h('i', { style: { width: t.percent + '%' } })), h('span', { class: 'mono' }, t.percent + '%'))
+    : h('div', { class: 'taskbar' }, h('div', { class: 'bar indet' }, h('i')), h('span', { class: 'muted' }, 'working'));
+  const stages = t => h('ul', { class: 'stages' }, (t.stages || []).map(s => h('li', null, h('span', { class: 'muted mono' }, new Date(s.at).toLocaleTimeString()), ' ', s.msg, s.pct >= 0 ? h('span', { class: 'muted' }, ' · ' + s.pct + '%') : null)));
+  const drawRunning = running => {
+    clear(runBox);
+    if (!running.length) { runBox.append(h('div', { class: 'muted', style: { padding: '14px 18px' } }, 'Nothing is running. Updates, installs and scans appear here while they work.')); return; }
+    running.forEach(t => runBox.append(h('div', { class: 'taskrow' },
+      h('div', { class: 'tasktop' }, h('strong', null, t.title), h('span', { class: 'muted' }, ' on ' + t.deviceName), h('span', { class: 'muted right' }, elapsed(t.started))),
+      pctBar(t), h('div', { class: 'muted' }, t.stage || 'Starting…'),
+      h('details', null, h('summary', null, 'Stages'), stages(t)))));
+  };
+  const drawRecent = recent => {
+    clear(recBox).append(table(['Finished', 'Task', 'PC', 'Result', 'Took'].map(x => ({ label: x })), recent.flatMap(t => {
+      const row = h('tr', { class: 'clickable', onclick: () => { open.has(t.id) ? open.delete(t.id) : open.add(t.id); drawRecent(recent); } },
+        h('td', { class: 'nowrap' }, fmtTime(t.finished)), h('td', null, t.title), h('td', null, t.deviceName),
+        h('td', null, h('span', { class: 'badge ' + t.status }, t.status === 'ok' ? 'done' : 'failed'), t.err ? h('span', { class: 'muted' }, ' ' + t.err) : null),
+        h('td', { class: 'nowrap' }, fmtDur(Math.round((new Date(t.finished) - new Date(t.started)) / 1000))));
+      return open.has(t.id) ? [row, h('tr', null, h('td', { colspan: 5 }, stages(t)))] : [row];
+    }), { empty: 'No finished tasks in the last 7 days' }));
+  };
+  let timer = null, lastRun = -1;
+  const poll = async () => {
+    try {
+      const r = await api('GET', '/api/activity/tasks');
+      drawRunning(r.running);
+      if (r.running.length !== lastRun) { drawRecent(r.recent); lastRun = r.running.length; }
+    } catch (e) { /* keep the last view */ }
+    timer = setTimeout(poll, 2000);
+  };
+  onLeave(() => clearTimeout(timer));
+  poll();
   try {
     const [rows, devs] = await Promise.all([api('GET', '/api/audit?limit=300'), getDevices()]);
     const names = Object.fromEntries(devs.map(d => [d.id, d.name]));
@@ -835,8 +872,8 @@ async function viewActivity() {
         .map(r => h('tr', null, h('td', { class: 'nowrap' }, fmtTime(r.time)), h('td', null, h('span', { class: 'badge' }, r.action)), h('td', null, r.device ? (names[r.device] || r.device) : ''), h('td', { class: 'mono wrap' }, r.detail || ''), h('td', { class: 'muted' }, r.ip || ''))), { empty: 'No matching entries' }));
     };
     q.addEventListener('input', draw);
-    clear(body).append(q, tb); draw();
-  } catch (e) { clear(body).append(h('div', { style: { padding: '20px' } }, 'Could not load activity: ' + e.message)); }
+    clear(logBox).append(q, tb); draw();
+  } catch (e) { clear(logBox).append(h('div', { style: { padding: '20px' } }, 'Could not load the audit log: ' + e.message)); }
 }
 
 boot();

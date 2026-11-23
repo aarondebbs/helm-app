@@ -204,3 +204,7 @@ PC's own RDP port. Windows Home cannot host RDP – use the in-browser screen th
 
 See `docs/WINDOWS-TEST-CHECKLIST.md` – the Windows-specific code could not be executed in the build environment and
 **must be tried on one real PC (and a VM snapshot) before you roll it out.**
+
+## Activity
+
+The Activity page shows a **Running now** panel (progress bar, percentage and current stage for each task, refreshed every 2 seconds), the last 7 days of finished tasks with their key stages, and the audit log. Percentages are reported for package/installer downloads, Windows updates and security scans; other tasks show stages only.

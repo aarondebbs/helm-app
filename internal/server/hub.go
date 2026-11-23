@@ -103,6 +103,9 @@ type Hub struct {
 	refusals map[string]chan string
 	// onFinish is called (without locks held) with a snapshot of each finished job.
 	onFinish func(Job)
+	// onStart is called with a snapshot of every new job, onProgress for each progress report (pct < 0 when none).
+	onStart    func(Job)
+	onProgress func(id string, pct int, msg string)
 }
 
 func newHub() *Hub {
@@ -208,6 +211,9 @@ func (h *Hub) dispatch(deviceID, name string, args json.RawMessage, actor string
 		delete(h.jobs, old)
 	}
 	h.mu.Unlock()
+	if h.onStart != nil {
+		h.onStart(*j)
+	}
 	j.timer = time.AfterFunc(spec.Timeout, func() { h.finish(j.ID, "timed out waiting for the agent", nil) })
 	if err := a.send(proto.Frame{T: proto.TCmd, ID: j.ID, Name: name, Args: args}); err != nil {
 		h.finish(j.ID, "send failed: "+err.Error(), nil)
@@ -254,10 +260,13 @@ func (h *Hub) finish(id, errMsg string, data json.RawMessage) {
 	}
 }
 
-func (h *Hub) progress(id, msg string) {
+func (h *Hub) progress(id, msg string, pct int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if j := h.jobs[id]; j != nil && j.Status == "running" {
+		if h.onProgress != nil {
+			h.onProgress(id, pct, msg)
+		}
 		j.Progress = append(j.Progress, msg)
 		if len(j.Progress) > 60 {
 			j.Progress = j.Progress[len(j.Progress)-60:]

@@ -55,6 +55,7 @@ type Server struct {
 	agentIP   *limiter
 	audit     *auditLog
 	tunnels   *tunnelMgr
+	tasks     *taskBook
 	log       *log.Logger
 	handler   http.Handler
 }
@@ -88,7 +89,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.cve = newCVEEngine(cfg.DataDir, func() string { return s.db.settings().NVDKey })
 	s.tunnels = newTunnelMgr(s)
+	s.tasks = newTaskBook()
 	s.hub.onFinish = s.storeInventory
+	s.hookTasks()
 	s.upd = newUpdater(cfg)
 	s.upd.exit = func() { s.Close(); os.Exit(0) }
 	s.handler = s.routes()
@@ -190,6 +193,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/update/check", s.authed(s.handleUpdateCheck, false))
 	mux.HandleFunc("GET /api/health", s.authed(s.handleHealth, false))
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /api/activity/tasks", s.authed(s.handleTasks, false))
 	mux.HandleFunc("POST /api/security/accept", s.authed(s.handleAcceptRisk, true))
 	mux.HandleFunc("POST /api/security/unaccept", s.authed(s.handleUnacceptRisk, true))
 	mux.HandleFunc("POST /api/devices/{id}/update-software", s.authed(s.handleUpdateSoftware, true))

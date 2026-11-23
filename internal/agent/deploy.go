@@ -128,14 +128,15 @@ func (a *Agent) cmdPkgInstall(ctx context.Context, c *cmdCtx) (any, error) {
 	dst := filepath.Join(dir, args.Filename)
 	defer os.Remove(dst)
 	c.progress("Downloading " + args.Filename + "…")
-	got, err := a.downloadAuth(ctx, a.cfg.Server+args.Path, dst)
+	dctx := context.WithValue(ctx, progKey{}, func(p int) { c.pct(p*8/10, "Downloading "+args.Filename+"…") })
+	got, err := a.downloadAuth(dctx, a.cfg.Server+args.Path, dst)
 	if err != nil {
 		return nil, err
 	}
 	if got != args.SHA256 {
 		return nil, errors.New("downloaded file does not match the expected SHA-256; not running it")
 	}
-	c.progress("Running installer…")
+	c.pct(85, "Running installer…")
 	if realLinux() {
 		return a.linuxDebInstall(ctx, dst)
 	}
@@ -181,7 +182,11 @@ func (a *Agent) downloadAuth(ctx context.Context, rawURL, dst string) (string, e
 		return "", err
 	}
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, 1<<30+1))
+	var dst2 io.Writer = io.MultiWriter(f, h)
+	if pf := progressFrom(ctx); pf != nil && resp.ContentLength > 0 {
+		dst2 = &pctWriter{w: dst2, total: resp.ContentLength, report: pf}
+	}
+	n, err := io.Copy(dst2, io.LimitReader(resp.Body, 1<<30+1))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -192,4 +197,29 @@ func (a *Agent) downloadAuth(ctx context.Context, rawURL, dst string) (string, e
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+type progKey struct{}
+
+func progressFrom(ctx context.Context) func(int) {
+	f, _ := ctx.Value(progKey{}).(func(int))
+	return f
+}
+
+// pctWriter reports download progress at most once per percent point.
+type pctWriter struct {
+	w        io.Writer
+	total, n int64
+	last     int
+	report   func(int)
+}
+
+func (p *pctWriter) Write(b []byte) (int, error) {
+	n, err := p.w.Write(b)
+	p.n += int64(n)
+	if pc := int(p.n * 100 / p.total); pc != p.last {
+		p.last = pc
+		p.report(pc)
+	}
+	return n, err
 }
