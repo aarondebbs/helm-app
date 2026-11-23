@@ -144,8 +144,9 @@ could lock you out of a remote server (SSH settings, disk encryption) is offered
 With several monitors a picker lets you choose which one to watch and control. Send my clipboard and Get PC clipboard
 move plain text between your browser and the PC. The frame rate and quality you choose are ceilings: Helm lowers them by
 itself while the connection is slow and raises them again when it recovers. These features run only on Windows and have
-not yet been tried on real hardware; see docs/WINDOWS-TEST-CHECKLIST.md. Two-way chat with the person at the PC is not
-built yet.
+not yet been tried on real hardware; see docs/WINDOWS-TEST-CHECKLIST.md. Capture reuses one bitmap, only changed tiles are copied and compressed, and capturing the next frame overlaps compressing
+and sending the last one, so up to 60 fps is possible for ordinary desktop use. Full-screen video is limited by the
+PC's CPU and the link. Two-way chat with the person at the PC is not built yet.
 
 ## Accepting risks
 

@@ -73,3 +73,12 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] Security page: Fix on the firewall finding turns the firewall on; the finding is gone after the rescan.
 - [ ] Update vulnerable software: a program with a newer winget version updates and the rescan shows the CVEs gone; a program winget does not know gives the "no newer version" message and the "no update published" badge.
 - [ ] Patch window: set a window a few minutes ahead, watch the PC install updates, then check the activity log.
+
+## Smoother remote screen (0.6.2): never run on a real PC yet
+
+- [ ] Choose "Up to 60 fps": moving a window, typing and scrolling look fluid and the picture stays sharp when still.
+- [ ] Drag a window quickly or play a video: the quality drops a little but the frame rate holds; it sharpens again when things stop moving.
+- [ ] Mouse pointer follows your hand without trailing (the browser now sends pointer moves about 70 times a second).
+- [ ] Half size and Low quality are still available and clearly faster on a slow link.
+- [ ] Leave a session open for 30 minutes at 60 fps: no memory growth in `helm-agent.exe` (Task Manager) and no stutter.
+- [ ] Switching monitors, changing resolution and the sign-in screen (Ctrl+Alt+Del) still work.

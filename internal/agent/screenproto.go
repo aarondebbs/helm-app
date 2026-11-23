@@ -228,3 +228,59 @@ func clamp01(v float64) float64 {
 	}
 	return v
 }
+
+// Rect is a changed region of a frame, in pixels.
+type Rect struct{ X, Y, W, H int }
+
+// ChangedRects compares two BGRA frames of the same size tile by tile and returns the tiles that differ.
+// A nil or differently sized prev means everything changed.
+func ChangedRects(prev, cur []byte, w, h, tile int) []Rect {
+	var out []Rect
+	for ty := 0; ty < h; ty += tile {
+		th := min(tile, h-ty)
+		for tx := 0; tx < w; tx += tile {
+			tw := min(tile, w-tx)
+			diff := len(prev) != len(cur)
+			for r := 0; !diff && r < th; r++ {
+				off := ((ty+r)*w + tx) * 4
+				if string(prev[off:off+tw*4]) != string(cur[off:off+tw*4]) { // the compiler turns this into a memequal without copying
+					diff = true
+				}
+			}
+			if diff {
+				out = append(out, Rect{tx, ty, tw, th})
+			}
+		}
+	}
+	return out
+}
+
+// CopyRect copies one region of a w-pixel-wide BGRA frame from src to dst.
+func CopyRect(dst, src []byte, w int, r Rect) {
+	for y := r.Y; y < r.Y+r.H; y++ {
+		off := (y*w + r.X) * 4
+		copy(dst[off:off+r.W*4], src[off:off+r.W*4])
+	}
+}
+
+// RectRGBA converts one region of a BGRA frame into tightly packed RGBA bytes, ready for the JPEG encoder.
+func RectRGBA(src []byte, w int, r Rect) []byte {
+	out := make([]byte, r.W*r.H*4)
+	for y := 0; y < r.H; y++ {
+		s := src[((r.Y+y)*w+r.X)*4:]
+		d := out[y*r.W*4:]
+		for x := 0; x < r.W; x++ {
+			d[x*4], d[x*4+1], d[x*4+2], d[x*4+3] = s[x*4+2], s[x*4+1], s[x*4], 255
+		}
+	}
+	return out
+}
+
+// MotionQuality lowers the JPEG quality when most of the screen changed (video, dragging a window), because there the
+// frame rate matters more than crispness, and a still picture is re-sent sharply a moment later by the next change.
+func MotionQuality(q, changed, total int) int {
+	if total > 0 && changed*100/total >= 40 {
+		return max(30, q-15)
+	}
+	return q
+}

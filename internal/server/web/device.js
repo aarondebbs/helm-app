@@ -450,7 +450,7 @@ function tabScreen(body, dev, id) {
   onLeave(() => { stop(); });
 
   const q = h('select', null, [[35, 'Low quality'], [55, 'Medium quality'], [75, 'High quality']].map(([v, l]) => h('option', { value: v, selected: v === 55 }, l)));
-  const fps = h('select', null, [[3, '3 fps'], [6, '6 fps'], [10, '10 fps'], [15, '15 fps']].map(([v, l]) => h('option', { value: v, selected: v === 10 }, l)));
+  const fps = h('select', null, [[10, '10 fps'], [20, '20 fps'], [30, '30 fps'], [60, 'Up to 60 fps']].map(([v, l]) => h('option', { value: v, selected: v === 30 }, l)));
   const scale = h('select', null, [[1, 'Full size'], [2, 'Half size (faster)']].map(([v, l]) => h('option', { value: v, selected: v === 1 }, l)));
   const tune = () => send({ t: 'q', q: Number(q.value), fps: Number(fps.value), scale: Number(scale.value) });
   [q, fps, scale].forEach(x => x.addEventListener('change', tune));
@@ -506,7 +506,7 @@ function tabScreen(body, dev, id) {
   }
 
   const frac = e => { const r = canvas.getBoundingClientRect(); return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }; };
-  canvas.addEventListener('mousemove', e => { const n = performance.now(); if (n - lastMove < 40) return; lastMove = n; send(Object.assign({ t: 'mm' }, frac(e))); });
+  canvas.addEventListener('mousemove', e => { const n = performance.now(); if (n - lastMove < 14) return; lastMove = n; send(Object.assign({ t: 'mm' }, frac(e))); });
   canvas.addEventListener('mousedown', e => { canvas.focus(); e.preventDefault(); send(Object.assign({ t: 'md', b: e.button }, frac(e))); });
   canvas.addEventListener('mouseup', e => { e.preventDefault(); send(Object.assign({ t: 'mu', b: e.button }, frac(e))); });
   canvas.addEventListener('contextmenu', e => e.preventDefault());

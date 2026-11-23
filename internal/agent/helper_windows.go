@@ -53,6 +53,7 @@ var (
 	procGetClientRect       = user32.NewProc("GetClientRect")
 	procLoadCursor          = user32.NewProc("LoadCursorW")
 	procGetModuleHandle     = kernel32.NewProc("GetModuleHandleW")
+	procCreateDIBSection    = gdi32.NewProc("CreateDIBSection")
 	procEnumDisplayMonitors = user32.NewProc("EnumDisplayMonitors")
 	procGetMonitorInfo      = user32.NewProc("GetMonitorInfoW")
 	procOpenClipboard       = user32.NewProc("OpenClipboard")
@@ -350,11 +351,18 @@ type capturer struct {
 	scale    int
 	quality  int
 	fps      int
-	raw      []byte
-	cur      []byte
-	prev     []byte
+	dib      []byte // persistent capture bitmap memory, overwritten by every grab
+	dibDC    uintptr
+	dibBmp   uintptr
+	dibOld   uintptr
+	dibW     int
+	dibH     int
+	scaled   []byte // half-size copy, only used when scale is 2
+	cur      []byte // the frame to stream: dib itself, or scaled
+	prev     []byte // what the viewer already has
 	force    bool
 	ad       Adaptive
+	adMu     sync.Mutex // the sender goroutine records timings while the capture loop reads them
 	send     func(v any)
 	mons     []MonRect
 	mon      int // index into mons; only used when there is more than one monitor
@@ -401,53 +409,65 @@ func (cp *capturer) grab() error {
 		return fmt.Errorf("GetDC failed")
 	}
 	defer procReleaseDC.Call(0, hdc)
-	mem, _, _ := procCreateCompatibleDC.Call(hdc)
-	if mem == 0 {
-		return fmt.Errorf("CreateCompatibleDC failed")
+	if cp.dibDC == 0 || cp.dibW != w || cp.dibH != h {
+		if err := cp.makeDIB(hdc, w, h); err != nil {
+			return err
+		}
 	}
-	defer procDeleteDC.Call(mem)
-	bmp, _, _ := procCreateCompatibleBmp.Call(hdc, uintptr(w), uintptr(h))
-	if bmp == 0 {
-		return fmt.Errorf("CreateCompatibleBitmap failed")
-	}
-	defer procDeleteObject.Call(bmp)
-	old, _, _ := procSelectObject.Call(mem, bmp)
+	// The bitmap is a DIB section, so BitBlt writes straight into cp.dib: no per-frame bitmap, no GetDIBits copy.
 	const srccopy, captureblt = 0x00CC0020, 0x40000000
-	ok, _, _ := procBitBlt.Call(mem, 0, 0, uintptr(w), uintptr(h), hdc, uintptr(ox), uintptr(oy), srccopy|captureblt)
-	procSelectObject.Call(mem, old) // GetDIBits needs the bitmap deselected
-	if ok == 0 {
+	if ok, _, _ := procBitBlt.Call(cp.dibDC, 0, 0, uintptr(w), uintptr(h), hdc, uintptr(ox), uintptr(oy), srccopy|captureblt); ok == 0 {
 		return fmt.Errorf("BitBlt failed")
-	}
-	if len(cp.raw) != w*h*4 {
-		cp.raw = make([]byte, w*h*4)
-	}
-	bi := bitmapInfoHeader{Size: 40, Width: int32(w), Height: -int32(h), Planes: 1, BitCount: 32}
-	if n, _, _ := procGetDIBits.Call(hdc, bmp, 0, uintptr(h), uintptr(unsafe.Pointer(&cp.raw[0])), uintptr(unsafe.Pointer(&bi)), 0); n == 0 {
-		return fmt.Errorf("GetDIBits failed")
 	}
 	cp.w, cp.h = w, h
 	return nil
 }
 
-// scaleFrame fills cp.cur from cp.raw, optionally halving the resolution.
+func (cp *capturer) makeDIB(hdc uintptr, w, h int) error {
+	cp.freeDIB()
+	bi := bitmapInfoHeader{Size: 40, Width: int32(w), Height: -int32(h), Planes: 1, BitCount: 32}
+	var bits uintptr
+	bmp, _, _ := procCreateDIBSection.Call(hdc, uintptr(unsafe.Pointer(&bi)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0)
+	if bmp == 0 || bits == 0 {
+		return fmt.Errorf("CreateDIBSection failed")
+	}
+	dc, _, _ := procCreateCompatibleDC.Call(hdc)
+	if dc == 0 {
+		procDeleteObject.Call(bmp)
+		return fmt.Errorf("CreateCompatibleDC failed")
+	}
+	cp.dibOld, _, _ = procSelectObject.Call(dc, bmp)
+	cp.dibDC, cp.dibBmp, cp.dibW, cp.dibH = dc, bmp, w, h
+	cp.dib = unsafe.Slice((*byte)(ptrOf(bits)), w*h*4)
+	cp.prev = nil
+	return nil
+}
+
+func (cp *capturer) freeDIB() {
+	if cp.dibDC != 0 {
+		procSelectObject.Call(cp.dibDC, cp.dibOld)
+		procDeleteDC.Call(cp.dibDC)
+		procDeleteObject.Call(cp.dibBmp)
+	}
+	cp.dibDC, cp.dibBmp, cp.dib, cp.dibW, cp.dibH = 0, 0, nil, 0, 0
+}
+
+// scaleFrame points cp.cur at the frame to stream: the capture bitmap itself at full size, or a half-size copy.
 func (cp *capturer) scaleFrame() {
 	if cp.scale < 2 {
 		cp.sw, cp.sh = cp.w, cp.h
-		if len(cp.cur) != len(cp.raw) {
-			cp.cur = make([]byte, len(cp.raw))
-		}
-		copy(cp.cur, cp.raw)
+		cp.cur = cp.dib
 		return
 	}
 	sw, sh := cp.w/2, cp.h/2
 	cp.sw, cp.sh = sw, sh
-	if len(cp.cur) != sw*sh*4 {
-		cp.cur = make([]byte, sw*sh*4)
+	if len(cp.scaled) != sw*sh*4 {
+		cp.scaled = make([]byte, sw*sh*4)
 	}
 	for y := 0; y < sh; y++ {
-		r0 := cp.raw[(2*y)*cp.w*4:]
-		r1 := cp.raw[(2*y+1)*cp.w*4:]
-		o := cp.cur[y*sw*4:]
+		r0 := cp.dib[(2*y)*cp.w*4:]
+		r1 := cp.dib[(2*y+1)*cp.w*4:]
+		o := cp.scaled[y*sw*4:]
 		for x := 0; x < sw; x++ {
 			for c := 0; c < 3; c++ {
 				o[x*4+c] = byte((int(r0[2*x*4+c]) + int(r0[(2*x+1)*4+c]) + int(r1[2*x*4+c]) + int(r1[(2*x+1)*4+c])) / 4)
@@ -455,62 +475,89 @@ func (cp *capturer) scaleFrame() {
 			o[x*4+3] = 255
 		}
 	}
+	cp.cur = cp.scaled
 }
 
-func (cp *capturer) diffTiles() []Tile {
-	type rc struct{ x, y, w, h int }
-	var changed []rc
-	for ty := 0; ty < cp.sh; ty += TileSize {
-		th := min(TileSize, cp.sh-ty)
-		for tx := 0; tx < cp.sw; tx += TileSize {
-			tw := min(TileSize, cp.sw-tx)
-			diff := cp.prev == nil || len(cp.prev) != len(cp.cur)
-			for r := 0; !diff && r < th; r++ {
-				off := ((ty+r)*cp.sw + tx) * 4
-				if !bytes.Equal(cp.prev[off:off+tw*4], cp.cur[off:off+tw*4]) {
-					diff = true
-				}
-			}
-			if diff {
-				changed = append(changed, rc{tx, ty, tw, th})
-			}
-		}
-	}
-	tiles := make([]Tile, len(changed))
+// encJob is one frame's worth of changed regions, already converted to RGBA so the capture buffer can be reused.
+type encJob struct {
+	rects   []Rect
+	pix     [][]byte
+	quality int
+}
+
+// encodeAndSend turns a job into JPEG tiles and writes them. It runs in its own goroutine so the next frame can be
+// captured while this one is still being compressed and sent.
+func (cp *capturer) encodeAndSend(c *ws.Conn, job encJob) error {
+	tiles := make([]Tile, len(job.rects))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, max(1, runtime.NumCPU()))
-	for i, c := range changed {
+	for i := range job.rects {
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(i int, c rc) {
+		go func(i int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			img := image.NewRGBA(image.Rect(0, 0, c.w, c.h))
-			for r := 0; r < c.h; r++ {
-				src := cp.cur[((c.y+r)*cp.sw+c.x)*4:]
-				dst := img.Pix[r*img.Stride:]
-				for x := 0; x < c.w; x++ { // BGRA -> RGBA
-					dst[x*4], dst[x*4+1], dst[x*4+2], dst[x*4+3] = src[x*4+2], src[x*4+1], src[x*4], 255
-				}
-			}
+			r := job.rects[i]
+			img := &image.RGBA{Pix: job.pix[i], Stride: r.W * 4, Rect: image.Rect(0, 0, r.W, r.H)}
 			var buf bytes.Buffer
-			_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: cp.quality})
-			tiles[i] = Tile{X: c.x, Y: c.y, W: c.w, H: c.h, JPEG: buf.Bytes()}
-		}(i, c)
+			_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: job.quality})
+			tiles[i] = Tile{X: r.X, Y: r.Y, W: r.W, H: r.H, JPEG: buf.Bytes()}
+		}(i)
 	}
 	wg.Wait()
-	return tiles
+	sendStart := time.Now()
+	for len(tiles) > 0 { // batches keep each WebSocket message modest
+		n, size := 0, 0
+		for n < len(tiles) && (n == 0 || size+len(tiles[n].JPEG) < 512<<10) && n < 200 {
+			size += len(tiles[n].JPEG)
+			n++
+		}
+		if err := c.WriteMessage(ws.OpBinary, EncodeTiles(tiles[:n])); err != nil {
+			return err
+		}
+		tiles = tiles[n:]
+	}
+	cp.adMu.Lock()
+	cp.ad.Observe(time.Since(sendStart)) // slow sends lower fps and quality; fast ones restore them
+	cp.adMu.Unlock()
+	return nil
 }
 
 func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly bool) {
 	cp := &capturer{scale: 1, force: true}
 	cp.ad.SetCeiling(8, 55)
+	defer cp.freeDIB()
 	var sendMu sync.Mutex
 	cp.send = func(v any) { sendMu.Lock(); defer sendMu.Unlock(); _ = sendJSON(c, v) }
+
+	// Stage two: compress and send. The channel holds one job, so capture runs one frame ahead at most and slows down
+	// by itself when the link cannot keep up.
+	jobs := make(chan encJob, 1)
+	failed := make(chan struct{})
+	var done sync.WaitGroup
+	done.Add(1)
+	go func() {
+		defer done.Done()
+		for job := range jobs {
+			if cp.encodeAndSend(c, job) != nil {
+				close(failed)
+				for range jobs { // drain so the producer never blocks
+				}
+				return
+			}
+		}
+	}()
+	defer func() { close(jobs); done.Wait() }()
+
 	frames := 0
 	lastW, lastH := 0, 0
 	next := time.Now()
 	for ctx.Err() == nil {
+		select {
+		case <-failed:
+			return
+		default:
+		}
 		// drain pending input first so controls feel responsive
 		for drain := true; drain; {
 			select {
@@ -527,12 +574,20 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 				continue
 			case <-ctx.Done():
 				return
+			case <-failed:
+				return
 			case <-time.After(wait):
 			}
 		}
+		cp.adMu.Lock()
 		cp.fps, cp.quality = cp.ad.FPS(), cp.ad.Quality()
-		next = time.Now().Add(time.Second / time.Duration(max(1, cp.fps)))
-		if frames%25 == 0 {
+		cp.adMu.Unlock()
+		// pace from the previous deadline, not from now, so one slow frame does not permanently lower the rate
+		next = next.Add(time.Second / time.Duration(max(1, cp.fps)))
+		if now := time.Now(); next.Before(now) {
+			next = now
+		}
+		if frames%(max(1, cp.fps)*2) == 0 {
 			cp.refreshMonitors()
 		}
 		frames++
@@ -553,26 +608,39 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 		if cp.force {
 			cp.prev, cp.force = nil, false
 		}
-		tiles := cp.diffTiles()
-		if len(tiles) > 0 {
-			sendStart := time.Now()
-			// send in batches that keep each WebSocket message modest
-			for len(tiles) > 0 {
-				n, size := 0, 0
-				for n < len(tiles) && (n == 0 || size+len(tiles[n].JPEG) < 512<<10) && n < 200 {
-					size += len(tiles[n].JPEG)
-					n++
-				}
-				if c.WriteMessage(ws.OpBinary, EncodeTiles(tiles[:n])) != nil {
-					return
-				}
-				tiles = tiles[n:]
-			}
-			cp.ad.Observe(time.Since(sendStart)) // slow sends lower fps and quality; fast ones restore them
+		if len(cp.prev) != len(cp.cur) {
+			cp.prev = nil
 		}
-		cp.prev, cp.cur = cp.cur, cp.prev
-		if cp.cur == nil {
-			cp.cur = make([]byte, len(cp.prev))
+		rects := ChangedRects(cp.prev, cp.cur, cp.sw, cp.sh, TileSize)
+		if len(rects) == 0 {
+			continue
+		}
+		if cp.prev == nil {
+			cp.prev = make([]byte, len(cp.cur))
+		}
+		total := ((cp.sw + TileSize - 1) / TileSize) * ((cp.sh + TileSize - 1) / TileSize)
+		job := encJob{rects: rects, pix: make([][]byte, len(rects)), quality: MotionQuality(cp.quality, len(rects), total)}
+		var cw sync.WaitGroup
+		sem := make(chan struct{}, max(1, runtime.NumCPU()))
+		for i, r := range rects {
+			cw.Add(1)
+			sem <- struct{}{}
+			go func(i int, r Rect) {
+				defer cw.Done()
+				defer func() { <-sem }()
+				job.pix[i] = RectRGBA(cp.cur, cp.sw, r)
+			}(i, r)
+		}
+		cw.Wait()
+		for _, r := range rects {
+			CopyRect(cp.prev, cp.cur, cp.sw, r) // the viewer will have this region once the job is sent
+		}
+		select {
+		case jobs <- job:
+		case <-ctx.Done():
+			return
+		case <-failed:
+			return
 		}
 	}
 }
@@ -766,14 +834,16 @@ func typeRune(r rune) {
 func (cp *capturer) handle(m InputMsg, viewOnly bool) {
 	switch m.T {
 	case "q":
+		cp.adMu.Lock()
 		q, fps := cp.ad.MaxQ, cp.ad.MaxFPS
 		if m.Q >= 20 && m.Q <= 90 {
 			q = m.Q
 		}
-		if m.FPS >= 1 && m.FPS <= 15 {
+		if m.FPS >= 1 && m.FPS <= 60 {
 			fps = m.FPS
 		}
 		cp.ad.SetCeiling(fps, q)
+		cp.adMu.Unlock()
 		if m.Scale == 1 || m.Scale == 2 {
 			cp.scale = m.Scale
 		}
