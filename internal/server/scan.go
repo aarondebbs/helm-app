@@ -87,6 +87,8 @@ type Finding struct {
 	Version   string  `json:"version,omitempty"`
 	Exploited bool    `json:"exploited,omitempty"`
 	Cat       string  `json:"category,omitempty"`
+	Accepted  bool    `json:"accepted,omitempty"` // risk accepted by the admin: shown, but not counted or scored
+	NoFix     bool    `json:"noFix,omitempty"`    // an update was tried and the vendor has not published a fix
 }
 
 // ScanView is what the API returns for a device.
@@ -136,6 +138,12 @@ func isLoopback(addr string) bool {
 
 // computeFindings derives findings and the score from raw scan facts.
 func (s *Server) computeFindings(sc *Scan) ScanView {
+	var accepted map[string]AcceptRec
+	var noFix map[string]time.Time
+	if s.db != nil {
+		s.db.view(func(x *dbData) { accepted, noFix = x.Accepted, x.NoFix })
+	}
+	isAccepted := func(key string) bool { _, ok := accepted[key]; return ok }
 	// JSON null breaks list rendering in the UI; always send arrays.
 	if sc.Software == nil {
 		sc.Software = []SoftwareItem{}
@@ -274,7 +282,12 @@ func (s *Server) computeFindings(sc *Scan) ScanView {
 				if r.KEV {
 					f.Title += " (actively exploited)"
 				}
+				f.NoFix = !noFix[sc.DeviceID+"|"+sw.Name].IsZero()
+				f.Accepted = isAccepted(f.Key)
 				out = append(out, f)
+				if f.Accepted {
+					continue
+				}
 				swPenalty += sevPenalty(r.Sev)
 				if r.KEV {
 					swPenalty += 8
@@ -290,7 +303,14 @@ func (s *Server) computeFindings(sc *Scan) ScanView {
 			penalty += swPenalty
 		}
 	}
-	for _, f := range out {
+	for i := range out {
+		f := &out[i]
+		if f.Kind != "cve" {
+			f.Accepted = isAccepted(f.Key)
+		}
+		if f.Accepted {
+			continue
+		}
 		if f.Kind != "cve" {
 			penalty += sevPenalty(f.Severity)
 		}

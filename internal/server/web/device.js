@@ -455,6 +455,23 @@ function tabScreen(body, dev, id) {
   const tune = () => send({ t: 'q', q: Number(q.value), fps: Number(fps.value), scale: Number(scale.value) });
   [q, fps, scale].forEach(x => x.addEventListener('change', tune));
   const vo = h('input', { type: 'checkbox' });
+  const mon = h('select', { class: 'hidden', 'aria-label': 'Monitor' });
+  mon.addEventListener('change', () => send({ t: 'mon', b: Number(mon.value) }));
+  const showMonitors = m => {
+    if (!m.list || m.list.length < 2) { mon.classList.add('hidden'); return; }
+    clear(mon).append(...m.list.map((x, i) => h('option', { value: i, selected: i === m.cur }, 'Monitor ' + (i + 1) + (x.primary ? ' (main)' : '') + ' ' + x.w + '×' + x.h)));
+    mon.classList.remove('hidden');
+  };
+  const clipFromPC = async m => {
+    if (!m.ok) { toast('Could not read the PC\u2019s clipboard', 'bad'); return; }
+    if (!m.s) { toast('The PC\u2019s clipboard has no text', 'ok'); return; }
+    try { await navigator.clipboard.writeText(m.s); toast('PC clipboard copied. Paste it here.', 'ok'); }
+    catch (e) { const ta = h('textarea', { readOnly: true, rows: 8, style: { width: '100%' } }); ta.value = m.s; modal('PC clipboard', h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Your browser blocked automatic copying. Select the text below and copy it.'), ta)); }
+  };
+  const sendClip = async () => {
+    try { const t = await navigator.clipboard.readText(); if (!t) { toast('Your clipboard has no text', 'ok'); return; } send({ t: 'clipset', s: t.slice(0, 262144) }); toast('Sent your clipboard to the PC. Paste it there.', 'ok'); }
+    catch (e) { toast('Your browser did not allow reading the clipboard', 'bad'); }
+  };
 
   const connect = actionButton('Connect', async () => {
     stop(); status.className = 'notice'; status.textContent = 'Connecting… waiting for permission on the PC if someone is signed in.';
@@ -466,6 +483,8 @@ function tabScreen(body, dev, id) {
       if (typeof ev.data === 'string') {
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m.t === 'screen') { canvas.width = m.w; canvas.height = m.h; live = true; status.className = 'notice'; status.textContent = 'Connected' + (viewOnly ? ' (view only)' : '') + '. Click the screen to send keyboard input.'; tune(); }
+        else if (m.t === 'monitors') { showMonitors(m); }
+        else if (m.t === 'clip') { clipFromPC(m); }
         else if (m.t === 'status') { status.textContent = m.msg; }
         else if (m.t === 'error' || (m.t === 'consent' && m.ok === false)) { status.className = 'notice bad'; status.textContent = m.msg || 'Refused'; }
         return;
@@ -496,12 +515,14 @@ function tabScreen(body, dev, id) {
   canvas.addEventListener('keydown', key('kd')); canvas.addEventListener('keyup', key('ku'));
 
   body.append(h('div', { class: 'panel stack' },
-    h('div', { class: 'row' }, connect, actionButton('Disconnect', async () => stop(), 'small'), h('label', null, vo, ' View only'), q, fps, scale,
+    h('div', { class: 'row' }, connect, actionButton('Disconnect', async () => stop(), 'small'), h('label', null, vo, ' View only'), q, fps, scale, mon,
       h('button', { class: 'small', onclick: () => send({ t: 'cad' }) }, 'Ctrl+Alt+Del'),
       h('button', { class: 'small', onclick: () => send({ t: 'refresh' }) }, 'Refresh'),
+      h('button', { class: 'small', onclick: sendClip }, 'Send my clipboard'),
+      h('button', { class: 'small', onclick: () => send({ t: 'clipget' }) }, 'Get PC clipboard'),
       h('button', { class: 'small', onclick: () => { if (box.requestFullscreen) box.requestFullscreen(); } }, 'Full screen')),
     status, box,
-    h('p', { class: 'muted' }, 'Streams the PC\'s console session (including the sign-in screen). Through Tailscale Funnel on a Raspberry Pi, use Half size / Low quality on slow links. For a full-speed session use an RDP tunnel from the Tools tab.')));
+    h('p', { class: 'muted' }, 'Streams the PC\'s console session (including the sign-in screen). The frame rate and quality you pick are the most it will use; Helm lowers them by itself when the connection is slow and raises them again when it recovers. Clipboard transfer is text only. For a full-speed session use an RDP tunnel from the Tools tab.')));
 }
 
 // ---------- security ----------

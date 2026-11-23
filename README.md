@@ -139,6 +139,19 @@ real-time protection, SMBv1, UAC, Guest account, Gatekeeper, automatic updates, 
 console only sends the name of the check. The agent maps it to a fixed command and refuses anything else. Nothing that
 could lock you out of a remote server (SSH settings, disk encryption) is offered.
 
+## Remote screen: monitors, clipboard, adaptive speed
+
+With several monitors a picker lets you choose which one to watch and control. Send my clipboard and Get PC clipboard
+move plain text between your browser and the PC. The frame rate and quality you choose are ceilings: Helm lowers them by
+itself while the connection is slow and raises them again when it recovers. These features run only on Windows and have
+not yet been tried on real hardware; see docs/WINDOWS-TEST-CHECKLIST.md. Two-way chat with the person at the PC is not
+built yet.
+
+## Accepting risks
+
+On the Security page, Accept risk keeps a finding listed but stops it lowering the score or raising alerts, for things
+you cannot fix. Findings for programs whose vendor publishes no update are marked "no update published".
+
 ## Inventory
 Hardware/OS inventory is collected from each online PC daily, stored on the server and shown on the device Overview (*Collect full inventory* refreshes). *Reports -> Hardware inventory* exports CSV.
 

@@ -57,3 +57,19 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] Dark mode toggle persists after reload.
 - [ ] Linux/macOS: personalised script from Add a PC enrols the machine; macOS .pkg + `helm-enroll.conf` enrols.
 - [ ] Install the MSI/exe on a PC with Defender/Bitdefender: no detection; note any in `docs/ANTIVIRUS.md`.
+
+## Remote screen additions (0.6.0): never run on a real PC yet
+
+- [ ] One monitor: the picker is hidden, the screen looks and behaves exactly as before.
+- [ ] Two or more monitors: the picker appears; switching shows the other monitor and the mouse lands on the right spot on it (including a monitor placed left of or above the main one).
+- [ ] Unplug or plug in a monitor during a session: the picker updates within a few seconds and the session survives.
+- [ ] Send my clipboard: copy text in the browser, press the button, paste on the PC (try accented letters and emoji).
+- [ ] Get PC clipboard: copy text on the PC, press the button, paste in the browser. If the browser blocks copying, a box with the text appears.
+- [ ] View only: clipboard buttons do nothing, the monitor picker still works.
+- [ ] Throttle the connection (or use a slow link): the picture gets coarser and the frame rate drops instead of lagging, then recovers when the link does.
+
+## Fixes and patching (0.5.x)
+
+- [ ] Security page: Fix on the firewall finding turns the firewall on; the finding is gone after the rescan.
+- [ ] Update vulnerable software: a program with a newer winget version updates and the rescan shows the CVEs gone; a program winget does not know gives the "no newer version" message and the "no update published" badge.
+- [ ] Patch window: set a window a few minutes ahead, watch the PC install updates, then check the activity log.

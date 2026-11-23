@@ -136,7 +136,7 @@ func viewOnlyAllowed(msg []byte) bool {
 	if json.Unmarshal(msg, &m) != nil {
 		return false
 	}
-	return m.T == "q" || m.T == "refresh"
+	return m.T == "q" || m.T == "refresh" || m.T == "mon"
 }
 
 // ---- file transfer ----

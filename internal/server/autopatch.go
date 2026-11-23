@@ -16,6 +16,7 @@ type PatchSettings struct {
 	Hours        int   `json:"hours"`        // length of the window, 1-12
 	AllowReboot  bool  `json:"allowReboot"`  // let Windows restart when an update needs it
 	SecurityOnly bool  `json:"securityOnly"` // only critical, important and security-category updates
+	Programs     bool  `json:"programs"`     // also update programs that have known vulnerabilities
 }
 
 // inWindow reports whether t falls inside the window, including a window that runs past midnight.
@@ -113,14 +114,23 @@ func (s *Server) autoPatch() {
 			}
 			x.Patched[d.ID] = today
 		})
-		s.patchDevice(d.ID, d.Name, set)
+		s.patchDevice(d, set)
 		if !s.db.settings().Patch.inWindow(time.Now()) {
 			return // the window closed while we worked
 		}
 	}
 }
 
-func (s *Server) patchDevice(id, name string, set PatchSettings) {
+func (s *Server) patchDevice(d Device, set PatchSettings) {
+	id, name := d.ID, d.Name
+	if set.Programs {
+		defer func() {
+			if n, notes := s.patchVulnerablePrograms(d); n > 0 || len(notes) > 0 {
+				s.audit.add(AuditEntry{IP: "server", Action: "patch_window_programs", Device: id, Detail: fmt.Sprintf("%s: %d program(s) updated. %s", name, n, strings.Join(notes, "; "))})
+				_ = s.startScan(id, "patch-window")
+			}
+		}()
+	}
 	raw, err := s.callCmd(id, "updates.check", nil, "patch-window")
 	if err != nil {
 		s.log.Printf("patch window: %s: check failed: %v", name, err)

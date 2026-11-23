@@ -53,6 +53,17 @@ var (
 	procGetClientRect       = user32.NewProc("GetClientRect")
 	procLoadCursor          = user32.NewProc("LoadCursorW")
 	procGetModuleHandle     = kernel32.NewProc("GetModuleHandleW")
+	procEnumDisplayMonitors = user32.NewProc("EnumDisplayMonitors")
+	procGetMonitorInfo      = user32.NewProc("GetMonitorInfoW")
+	procOpenClipboard       = user32.NewProc("OpenClipboard")
+	procCloseClipboard      = user32.NewProc("CloseClipboard")
+	procEmptyClipboard      = user32.NewProc("EmptyClipboard")
+	procGetClipboardData    = user32.NewProc("GetClipboardData")
+	procSetClipboardData    = user32.NewProc("SetClipboardData")
+	procGlobalAlloc         = kernel32.NewProc("GlobalAlloc")
+	procGlobalLock          = kernel32.NewProc("GlobalLock")
+	procGlobalUnlock        = kernel32.NewProc("GlobalUnlock")
+	procGlobalSize          = kernel32.NewProc("GlobalSize")
 	procCreateCompatibleDC  = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBmp = gdi32.NewProc("CreateCompatibleBitmap")
 	procSelectObject        = gdi32.NewProc("SelectObject")
@@ -343,6 +354,12 @@ type capturer struct {
 	cur      []byte
 	prev     []byte
 	force    bool
+	ad       Adaptive
+	send     func(v any)
+	mons     []MonRect
+	mon      int // index into mons; only used when there is more than one monitor
+	vx, vy   int // virtual desktop origin and size, for mapping the pointer
+	vw, vh   int
 }
 
 // attach makes the calling thread use the desktop that currently receives input.
@@ -371,6 +388,11 @@ func (cp *capturer) grab() error {
 	w0, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
 	h0, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
 	w, h := int(w0), int(h0)
+	ox, oy := 0, 0
+	if len(cp.mons) > 1 && cp.mon < len(cp.mons) { // several monitors: capture the one the viewer picked
+		m := cp.mons[cp.mon]
+		w, h, ox, oy = m.W, m.H, m.X, m.Y
+	}
 	if w <= 0 || h <= 0 {
 		return fmt.Errorf("no screen")
 	}
@@ -391,7 +413,7 @@ func (cp *capturer) grab() error {
 	defer procDeleteObject.Call(bmp)
 	old, _, _ := procSelectObject.Call(mem, bmp)
 	const srccopy, captureblt = 0x00CC0020, 0x40000000
-	ok, _, _ := procBitBlt.Call(mem, 0, 0, uintptr(w), uintptr(h), hdc, 0, 0, srccopy|captureblt)
+	ok, _, _ := procBitBlt.Call(mem, 0, 0, uintptr(w), uintptr(h), hdc, uintptr(ox), uintptr(oy), srccopy|captureblt)
 	procSelectObject.Call(mem, old) // GetDIBits needs the bitmap deselected
 	if ok == 0 {
 		return fmt.Errorf("BitBlt failed")
@@ -481,7 +503,11 @@ func (cp *capturer) diffTiles() []Tile {
 }
 
 func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly bool) {
-	cp := &capturer{scale: 1, quality: 55, fps: 8, force: true}
+	cp := &capturer{scale: 1, force: true}
+	cp.ad.SetCeiling(8, 55)
+	var sendMu sync.Mutex
+	cp.send = func(v any) { sendMu.Lock(); defer sendMu.Unlock(); _ = sendJSON(c, v) }
+	frames := 0
 	lastW, lastH := 0, 0
 	next := time.Now()
 	for ctx.Err() == nil {
@@ -504,7 +530,12 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 			case <-time.After(wait):
 			}
 		}
+		cp.fps, cp.quality = cp.ad.FPS(), cp.ad.Quality()
 		next = time.Now().Add(time.Second / time.Duration(max(1, cp.fps)))
+		if frames%25 == 0 {
+			cp.refreshMonitors()
+		}
+		frames++
 		if !cp.attach() {
 			continue
 		}
@@ -524,6 +555,7 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 		}
 		tiles := cp.diffTiles()
 		if len(tiles) > 0 {
+			sendStart := time.Now()
 			// send in batches that keep each WebSocket message modest
 			for len(tiles) > 0 {
 				n, size := 0, 0
@@ -536,12 +568,153 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 				}
 				tiles = tiles[n:]
 			}
+			cp.ad.Observe(time.Since(sendStart)) // slow sends lower fps and quality; fast ones restore them
 		}
 		cp.prev, cp.cur = cp.cur, cp.prev
 		if cp.cur == nil {
 			cp.cur = make([]byte, len(cp.prev))
 		}
 	}
+}
+
+// ---- monitors ----
+
+type winRect struct{ L, T, R, B int32 }
+
+type monitorInfo struct {
+	Size  uint32
+	Mon   winRect
+	Work  winRect
+	Flags uint32
+}
+
+// monOut collects the result of the enumeration callback. The callback is created once (Go never frees them) and only
+// the capture goroutine calls listMonitors, so a package variable is safe.
+var monOut []MonRect
+var monCB = syscall.NewCallback(func(hMon, hdc, lprc, lparam uintptr) uintptr {
+	mi := monitorInfo{Size: uint32(unsafe.Sizeof(monitorInfo{}))}
+	if r, _, _ := procGetMonitorInfo.Call(hMon, uintptr(unsafe.Pointer(&mi))); r != 0 {
+		monOut = append(monOut, MonRect{X: int(mi.Mon.L), Y: int(mi.Mon.T), W: int(mi.Mon.R - mi.Mon.L), H: int(mi.Mon.B - mi.Mon.T), Primary: mi.Flags&1 != 0})
+	}
+	return 1
+})
+
+// listMonitors returns the monitors with the primary first, so index 0 is what the viewer saw before this feature.
+func listMonitors() []MonRect {
+	monOut = monOut[:0]
+	procEnumDisplayMonitors.Call(0, 0, monCB, 0)
+	out := append([]MonRect(nil), monOut...)
+	for i, m := range out {
+		if m.Primary && i != 0 {
+			out[0], out[i] = out[i], out[0]
+			break
+		}
+	}
+	return out
+}
+
+func sameMonitors(a, b []MonRect) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// refreshMonitors re-reads the monitor layout and tells the viewer when it changed.
+func (cp *capturer) refreshMonitors() {
+	mons := listMonitors()
+	if len(mons) == 0 || sameMonitors(mons, cp.mons) {
+		return
+	}
+	cp.mons = mons
+	if cp.mon >= len(mons) {
+		cp.mon = 0
+	}
+	g := func(i uintptr) int { v, _, _ := procGetSystemMetrics.Call(i); return int(int32(v)) }
+	cp.vx, cp.vy, cp.vw, cp.vh = g(76), g(77), g(78), g(79)
+	cp.force = true
+	cp.announceMonitors()
+}
+
+func (cp *capturer) announceMonitors() {
+	if cp.send == nil {
+		return
+	}
+	list := make([]map[string]any, 0, len(cp.mons))
+	for _, m := range cp.mons {
+		list = append(list, map[string]any{"w": m.W, "h": m.H, "primary": m.Primary})
+	}
+	cp.send(map[string]any{"t": "monitors", "list": list, "cur": cp.mon})
+}
+
+// ---- clipboard (text only) ----
+
+const cfUnicodeText = 13
+const clipMax = 256 << 10 // characters; keeps a message well inside the relay limit
+
+func openClipboard() bool {
+	for i := 0; i < 10; i++ {
+		if r, _, _ := procOpenClipboard.Call(0); r != 0 {
+			return true
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return false
+}
+
+func ptrOf(p uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&p)) }
+
+func clipboardGet() (string, bool) {
+	if !openClipboard() {
+		return "", false
+	}
+	defer procCloseClipboard.Call()
+	h, _, _ := procGetClipboardData.Call(cfUnicodeText)
+	if h == 0 {
+		return "", true // nothing textual on the clipboard
+	}
+	p, _, _ := procGlobalLock.Call(h)
+	if p == 0 {
+		return "", false
+	}
+	defer procGlobalUnlock.Call(h)
+	n, _, _ := procGlobalSize.Call(h)
+	u := unsafe.Slice((*uint16)(ptrOf(p)), int(n)/2)
+	end := 0
+	for end < len(u) && u[end] != 0 && end < clipMax {
+		end++
+	}
+	return string(utf16.Decode(u[:end])), true
+}
+
+func clipboardSet(s string) bool {
+	r := []rune(s)
+	if len(r) > clipMax {
+		r = r[:clipMax]
+	}
+	u := append(utf16.Encode(r), 0)
+	if !openClipboard() {
+		return false
+	}
+	defer procCloseClipboard.Call()
+	mem, _, _ := procGlobalAlloc.Call(0x2, uintptr(len(u)*2)) // GMEM_MOVEABLE
+	if mem == 0 {
+		return false
+	}
+	p, _, _ := procGlobalLock.Call(mem)
+	if p == 0 {
+		return false
+	}
+	copy(unsafe.Slice((*uint16)(ptrOf(p)), len(u)), u)
+	procGlobalUnlock.Call(mem)
+	procEmptyClipboard.Call()
+	ok, _, _ := procSetClipboardData.Call(cfUnicodeText, mem)
+	return ok != 0
 }
 
 // ---- input ----
@@ -590,29 +763,29 @@ func typeRune(r rune) {
 	}
 }
 
-func clamp01(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
-}
-
 func (cp *capturer) handle(m InputMsg, viewOnly bool) {
 	switch m.T {
 	case "q":
+		q, fps := cp.ad.MaxQ, cp.ad.MaxFPS
 		if m.Q >= 20 && m.Q <= 90 {
-			cp.quality = m.Q
+			q = m.Q
 		}
 		if m.FPS >= 1 && m.FPS <= 15 {
-			cp.fps = m.FPS
+			fps = m.FPS
 		}
+		cp.ad.SetCeiling(fps, q)
 		if m.Scale == 1 || m.Scale == 2 {
 			cp.scale = m.Scale
 		}
 		cp.force = true
+		return
+	case "mon":
+		if m.B >= 0 && m.B < len(cp.mons) && m.B != cp.mon {
+			cp.mon = m.B
+			cp.prev = nil
+			cp.force = true
+			cp.announceMonitors()
+		}
 		return
 	case "refresh":
 		cp.force = true
@@ -622,6 +795,18 @@ func (cp *capturer) handle(m InputMsg, viewOnly bool) {
 		return
 	}
 	if !cp.attach() { // input must go to the desktop that is receiving input now
+		return
+	}
+	switch m.T {
+	case "clipset":
+		if !clipboardSet(m.Text) && cp.send != nil {
+			cp.send(map[string]any{"t": "clip", "ok": false})
+		}
+		return
+	case "clipget":
+		if txt, ok := clipboardGet(); cp.send != nil {
+			cp.send(map[string]any{"t": "clip", "ok": ok, "s": txt})
+		}
 		return
 	}
 	const (
@@ -635,7 +820,14 @@ func (cp *capturer) handle(m InputMsg, viewOnly bool) {
 		wheel    = 0x0800
 		hwheel   = 0x1000
 	)
-	pos := func() { sendMouse(int32(clamp01(m.X)*65535), int32(clamp01(m.Y)*65535), 0, moveAbs) }
+	pos := func() {
+		if len(cp.mons) > 1 && cp.mon < len(cp.mons) {
+			x, y := AbsPoint(cp.mons[cp.mon], cp.vx, cp.vy, cp.vw, cp.vh, m.X, m.Y)
+			sendMouse(x, y, 0, moveAbs|0x4000) // MOUSEEVENTF_VIRTUALDESK
+			return
+		}
+		sendMouse(int32(clamp01(m.X)*65535), int32(clamp01(m.Y)*65535), 0, moveAbs)
+	}
 	switch m.T {
 	case "mm":
 		pos()

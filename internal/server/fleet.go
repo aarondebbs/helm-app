@@ -29,7 +29,7 @@ func (s *Server) secSummaryFor(id string) *secSummary {
 	}
 	ex := 0
 	for _, f := range v.Findings {
-		if f.Exploited {
+		if f.Exploited && !f.Accepted {
 			ex++
 		}
 	}
@@ -105,6 +105,8 @@ func (s *Server) handleFleetSecurity(w http.ResponseWriter, r *http.Request, ses
 				ff = &fleetFinding{Finding: f}
 				agg[f.Key] = ff
 				order = append(order, f.Key)
+			} else if !f.NoFix {
+				ff.NoFix = false // only "no update published" when that is true on every affected PC
 			}
 			ff.Devices = append(ff.Devices, struct {
 				ID   string `json:"id"`

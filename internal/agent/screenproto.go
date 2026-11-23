@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/binary"
 	"errors"
+	"time"
 	"unicode/utf8"
 )
 
@@ -71,7 +72,7 @@ func DecodeTiles(b []byte) ([]Tile, error) {
 
 // InputMsg is a message from the browser to the helper.
 type InputMsg struct {
-	T     string  `json:"t"`           // mm, md, mu, wh, kd, ku, txt, cad, q, refresh
+	T     string  `json:"t"`           // mm, md, mu, wh, kd, ku, txt, cad, q, refresh, mon, clipset, clipget
 	X     float64 `json:"x,omitempty"` // 0..1 fraction of the frame
 	Y     float64 `json:"y,omitempty"`
 	B     int     `json:"b,omitempty"`  // mouse button 0 left, 1 middle, 2 right
@@ -86,6 +87,7 @@ type InputMsg struct {
 	Q     int     `json:"q,omitempty"`     // JPEG quality 20..90
 	FPS   int     `json:"fps,omitempty"`   // 1..15
 	Scale int     `json:"scale,omitempty"` // 1 or 2 (downscale divisor)
+	// "mon" selects monitor number B; "clipset" puts Text on the PC's clipboard; "clipget" asks for the PC's clipboard text.
 }
 
 type scanKey struct {
@@ -155,4 +157,74 @@ func DecideKey(m InputMsg, up bool) KeyAction {
 		return KeyAction{}
 	}
 	return KeyAction{Scan: sk.Scan, Ext: sk.Ext, Up: up, OK: true}
+}
+
+// Adaptive keeps a remote session usable on a slow link. The viewer chooses a ceiling (frame rate and JPEG quality);
+// this lowers both while sends to the server are slow and raises them again, up to the ceiling, when the link recovers.
+type Adaptive struct {
+	MaxFPS, MaxQ int
+	fps, q       int
+	ewma         float64 // smoothed duration of one frame send, in milliseconds
+}
+
+// SetCeiling applies the viewer's choice and clamps the current values to it.
+func (a *Adaptive) SetCeiling(fps, q int) {
+	a.MaxFPS, a.MaxQ = fps, q
+	if a.fps == 0 || a.fps > fps {
+		a.fps = fps
+	}
+	if a.q == 0 || a.q > q {
+		a.q = q
+	}
+}
+
+// Observe records how long the last frame took to send.
+func (a *Adaptive) Observe(d time.Duration) {
+	ms := float64(d) / float64(time.Millisecond)
+	if a.ewma == 0 {
+		a.ewma = ms
+	} else {
+		a.ewma = 0.7*a.ewma + 0.3*ms
+	}
+	switch {
+	case a.ewma > 150:
+		a.fps = max(2, a.fps*3/4)
+		a.q = max(30, a.q-5)
+	case a.ewma < 40:
+		if a.fps < a.MaxFPS {
+			a.fps++
+		}
+		if a.q < a.MaxQ {
+			a.q = min(a.MaxQ, a.q+2)
+		}
+	}
+}
+
+func (a *Adaptive) FPS() int     { return max(1, a.fps) }
+func (a *Adaptive) Quality() int { return max(20, a.q) }
+
+// MonRect is one monitor in virtual-desktop pixels.
+type MonRect struct {
+	X, Y, W, H int
+	Primary    bool
+}
+
+// AbsPoint converts a position given as fractions of one monitor into the 0..65535 range that SendInput expects
+// for the whole virtual desktop (vx, vy, vw, vh).
+func AbsPoint(m MonRect, vx, vy, vw, vh int, fx, fy float64) (int32, int32) {
+	px := float64(m.X) + clamp01(fx)*float64(m.W-1)
+	py := float64(m.Y) + clamp01(fy)*float64(m.H-1)
+	nx := (px - float64(vx)) * 65535 / float64(max(1, vw-1))
+	ny := (py - float64(vy)) * 65535 / float64(max(1, vh-1))
+	return int32(nx + 0.5), int32(ny + 0.5)
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }

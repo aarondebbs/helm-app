@@ -190,6 +190,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/update/check", s.authed(s.handleUpdateCheck, false))
 	mux.HandleFunc("GET /api/health", s.authed(s.handleHealth, false))
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("POST /api/security/accept", s.authed(s.handleAcceptRisk, true))
+	mux.HandleFunc("POST /api/security/unaccept", s.authed(s.handleUnacceptRisk, true))
 	mux.HandleFunc("POST /api/devices/{id}/update-software", s.authed(s.handleUpdateSoftware, true))
 	mux.HandleFunc("GET /api/patch-window", s.authed(s.handlePatchGet, false))
 	mux.HandleFunc("PUT /api/patch-window", s.authed(s.handlePatchPut, true))

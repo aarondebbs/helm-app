@@ -190,7 +190,7 @@ func viewOnlyMsg(d []byte) bool {
 	var m struct {
 		T string `json:"t"`
 	}
-	return json.Unmarshal(d, &m) == nil && (m.T == "q" || m.T == "refresh")
+	return json.Unmarshal(d, &m) == nil && (m.T == "q" || m.T == "refresh" || m.T == "mon")
 }
 
 func isCAD(d []byte) bool {

@@ -120,7 +120,7 @@ function patchWindowPanel() {
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const draw = async () => {
     let w; try { w = await api('GET', '/api/patch-window'); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
-    const st = { enabled: w.enabled, days: new Set(w.days), startHour: w.startHour, hours: w.hours || 4, allowReboot: w.allowReboot, securityOnly: w.securityOnly };
+    const st = { enabled: w.enabled, days: new Set(w.days), startHour: w.startHour, hours: w.hours || 4, allowReboot: w.allowReboot, securityOnly: w.securityOnly, programs: w.programs };
     const dayRow = h('div', { class: 'pills' }, DAYS.map((d, i) => {
       const b = h('button', { type: 'button', class: 'pill' + (st.days.has(i) ? ' on' : ''), 'aria-pressed': String(st.days.has(i)) }, d);
       b.addEventListener('click', () => { st.days.has(i) ? st.days.delete(i) : st.days.add(i); b.classList.toggle('on', st.days.has(i)); b.setAttribute('aria-pressed', String(st.days.has(i))); });
@@ -134,10 +134,11 @@ function patchWindowPanel() {
       h('div', { class: 'field' }, h('span', null, 'Days'), dayRow),
       h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Starts at'), start), h('label', { class: 'field' }, h('span', null, 'Window length'), len)),
       h('label', { class: 'row', style: { justifyContent: 'space-between' } }, h('span', null, 'Only security updates'), toggle(st.securityOnly, v => { st.securityOnly = v; })),
+      h('label', { class: 'row', style: { justifyContent: 'space-between' } }, h('span', null, 'Also update programs that have known vulnerabilities'), toggle(st.programs, v => { st.programs = v; })),
       h('label', { class: 'row', style: { justifyContent: 'space-between' } }, h('span', null, 'Allow restarts when an update needs one'), toggle(st.allowReboot, v => { st.allowReboot = v; })),
       h('p', { class: 'muted small-text' }, 'Times are the server\u2019s local time. A PC that is off during the window is patched the next time it is online inside one. Results appear in the activity log.'),
       h('div', { class: 'row' }, actionButton('Save window', async () => {
-        await api('PUT', '/api/patch-window', { enabled: st.enabled, days: [...st.days].sort(), startHour: +start.value, hours: +len.value, allowReboot: st.allowReboot, securityOnly: st.securityOnly });
+        await api('PUT', '/api/patch-window', { enabled: st.enabled, days: [...st.days].sort(), startHour: +start.value, hours: +len.value, allowReboot: st.allowReboot, securityOnly: st.securityOnly, programs: st.programs });
         toast('Patch window saved', 'ok'); draw();
       }, 'primary')));
   };
@@ -246,13 +247,15 @@ async function viewSecurity(tab) {
     host.append(h('div', { class: 'panel flush' }, list.slice(0, 200).map(x => h('div', { class: 'finding' },
       h('div', null, sevBadge(x.severity)),
       h('div', null, h('div', { class: 'ft' }, x.title, x.cve ? h('a', { href: 'https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(x.cve), target: '_blank', rel: 'noopener noreferrer', style: { marginLeft: '8px', fontWeight: 400 } }, 'NVD ↗') : null,
-        x.score ? h('span', { class: 'muted', style: { fontWeight: 400 } }, '  CVSS ' + x.score.toFixed(1)) : null, x.exploited ? h('span', { class: 'badge kev', style: { marginLeft: '8px' } }, 'actively exploited') : null),
+        x.score ? h('span', { class: 'muted', style: { fontWeight: 400 } }, '  CVSS ' + x.score.toFixed(1)) : null, x.accepted ? h('span', { class: 'badge', style: { marginLeft: '8px' } }, 'accepted risk') : null, x.noFix ? h('span', { class: 'badge', style: { marginLeft: '8px' } }, 'no update published') : null, x.exploited ? h('span', { class: 'badge kev', style: { marginLeft: '8px' } }, 'actively exploited') : null),
         x.detail ? h('div', { class: 'fd' }, x.detail) : null, x.fix ? h('div', { class: 'ff' }, '→ ' + x.fix) : null,
         h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, x.kind === 'cve' ? 'Potentially affected: the version matches the vulnerable range; Windows-level fixes or backported patches are not detected.' : '')),
-      h('div', { class: 'right' }, h('button', { class: 'small', onclick: () => affectedDialog(x) }, plural(x.devices.length, 'PC')), fixButton(x))))),
+      h('div', { class: 'right' }, h('button', { class: 'small', onclick: () => affectedDialog(x) }, plural(x.devices.length, 'PC')), x.accepted ? null : fixButton(x), acceptButton(x))))),
       list.length > 200 ? h('p', { class: 'muted', style: { marginTop: '10px' } }, 'Showing the first 200 of ' + list.length + '. Export the CSV for everything.') : null);
   };
   const load = async () => { try { data = await api('GET', '/api/security'); if (my === routeToken) draw(); } catch (e) { clear(host).append('Could not load: ' + e.message); } };
+  const onRefresh = () => { last = ''; load(); };
+  window.addEventListener('helm-sec-refresh', onRefresh); cleanups.push(() => window.removeEventListener('helm-sec-refresh', onRefresh));
   load(); every(12000, load);
 }
 
@@ -282,16 +285,35 @@ function fixButton(x) {
 
 // A vulnerable program is fixed by updating it. The server finds the update through winget or the package manager and
 // says plainly when the vendor has not published one.
+function acceptButton(x) {
+  if (x.severity === 'info') return null;
+  const b = h('button', { class: 'small', style: { marginTop: '6px' } }, x.accepted ? 'Stop accepting' : 'Accept risk');
+  b.addEventListener('click', action(b, async () => {
+    if (x.accepted) { await api('POST', '/api/security/unaccept', { key: x.key }); toast('Counted again', 'ok'); }
+    else {
+      const note = prompt('Accept this risk? It stays listed but stops lowering the score and raising alerts.\n\nWhy is it acceptable? (optional)');
+      if (note === null) return;
+      await api('POST', '/api/security/accept', { key: x.key, note });
+      toast('Risk accepted', 'ok');
+    }
+    window.dispatchEvent(new CustomEvent('helm-sec-refresh'));
+  }));
+  return b;
+}
+
 function softwareButton(x) {
   const b = h('button', { class: 'small primary', style: { marginTop: '6px' } }, 'Update on ' + plural(x.devices.length, 'PC'));
   b.addEventListener('click', action(b, async () => {
     if (!confirm('Update ' + x.software + ' on ' + plural(x.devices.length, 'PC') + '?')) return;
-    let ok = 0; const bad = [];
+    let ok = 0; const bad = [], left = [];
     for (const d of x.devices) {
-      try { await api('POST', '/api/devices/' + d.id + '/update-software', { software: x.software }); ok++; }
-      catch (e) { bad.push(d.name + ': ' + e.message); }
+      try {
+        const r = await api('POST', '/api/devices/' + d.id + '/update-software', { software: x.software });
+        if (r && r.rescanned && r.remaining > 0) left.push(d.name + ' (' + r.remaining + ' left)'); else ok++;
+      } catch (e) { bad.push(d.name + ': ' + e.message); }
     }
-    if (ok) toast(x.software + ' updated on ' + plural(ok, 'PC') + '. Rescanning.', 'ok');
+    if (ok) toast(x.software + ' updated and checked on ' + plural(ok, 'PC') + '. The vulnerabilities are gone.', 'ok');
+    if (left.length) toast('Updated, but the rescan still finds vulnerabilities on ' + left.join(', ') + '. A newer version may be needed.', 'bad');
     if (bad.length) toast(bad.slice(0, 2).join('; '), 'bad');
   }));
   return b;

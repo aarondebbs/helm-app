@@ -181,7 +181,15 @@ type dbData struct {
 	Sessions  []*SessionRec        `json:"sessions"`
 	Seen      map[string]time.Time `json:"seen,omitempty"`
 	Inventory map[string]*InvRec   `json:"inventory,omitempty"`
-	Patched   map[string]string    `json:"patched,omitempty"` // device id -> date (YYYY-MM-DD) of its last window run
+	Accepted  map[string]AcceptRec `json:"accepted,omitempty"` // finding key -> accepted risk
+	NoFix     map[string]time.Time `json:"noFix,omitempty"`    // "deviceID|software" -> when an update was found to be unavailable
+	Patched   map[string]string    `json:"patched,omitempty"`  // device id -> date (YYYY-MM-DD) of its last window run
+}
+
+// AcceptRec records a finding the administrator has chosen to live with.
+type AcceptRec struct {
+	Note string    `json:"note"`
+	At   time.Time `json:"at"`
 }
 
 // InvRec is the last hardware/OS inventory reported by a device, kept so it stays visible while the PC is offline.
