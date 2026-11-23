@@ -55,7 +55,7 @@ jobs:
         env:
           HELM_RELEASE_KEY: ${{ secrets.HELM_RELEASE_KEY }}
       - name: Install MSI tooling
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq msitools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq msitools wixl
       - name: Build
         run: ./build.sh "${TAG#v}"
       - name: Publish
