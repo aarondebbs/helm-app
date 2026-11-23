@@ -437,9 +437,6 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request, sess 
 
 // handleUpdateAgents imports the agent releases now.
 func (s *Server) handleUpdateAgents(w http.ResponseWriter, r *http.Request, sess *session) {
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
 	defer cancel()
 	if err := s.checkUpdates(ctx, true); err != nil {

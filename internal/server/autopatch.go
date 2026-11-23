@@ -82,9 +82,6 @@ func (s *Server) handlePatchPut(w http.ResponseWriter, r *http.Request, sess *se
 		writeErr(w, 400, msg)
 		return
 	}
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	s.db.update(func(d *dbData) { d.Settings.Patch = p })
 	s.record(r, "patch_window", "", fmt.Sprintf("enabled=%v days=%v start=%d hours=%d", p.Enabled, p.Days, p.StartHour, p.Hours))
 	writeJSON(w, 200, p)

@@ -152,6 +152,13 @@ built yet.
 On the Security page, Accept risk keeps a finding listed but stops it lowering the score or raising alerts, for things
 you cannot fix. Findings for programs whose vendor publishes no update are marked "no update published".
 
+## When the authenticator code is asked for
+
+Routine actions (installing updates, one-click fixes, restarts, service and process control, approving a PC, settings,
+patch window) never ask for the code. Critical ones do, then stay unlocked for 30 minutes: running commands and
+scripts, the terminal, the remote screen, file transfer and deleting, RDP tunnels, removing a PC or the agent,
+backups, updating this server, and the sign-in and account settings.
+
 ## Inventory
 Hardware/OS inventory is collected from each online PC daily, stored on the server and shown on the device Overview (*Collect full inventory* refreshes). *Reports -> Hardware inventory* exports CSV.
 

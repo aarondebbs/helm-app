@@ -24,9 +24,6 @@ func (s *Server) handleUpdateSoftware(w http.ResponseWriter, r *http.Request, se
 		writeErr(w, 400, "software is required")
 		return
 	}
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	d, ok := s.st.device(id)
 	if !ok || !d.Approved {
 		writeErr(w, 404, "no such device")

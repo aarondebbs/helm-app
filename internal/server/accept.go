@@ -21,9 +21,6 @@ func (s *Server) handleAcceptRisk(w http.ResponseWriter, r *http.Request, sess *
 		writeErr(w, 400, "a finding key and a note up to 500 characters are required")
 		return
 	}
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	s.db.update(func(x *dbData) {
 		if x.Accepted == nil {
 			x.Accepted = map[string]AcceptRec{}
@@ -39,9 +36,6 @@ func (s *Server) handleUnacceptRisk(w http.ResponseWriter, r *http.Request, sess
 		Key string `json:"key"`
 	}
 	if !readJSON(w, r, &req) {
-		return
-	}
-	if !s.needStepUp(w, sess) {
 		return
 	}
 	s.db.update(func(x *dbData) { delete(x.Accepted, req.Key) })

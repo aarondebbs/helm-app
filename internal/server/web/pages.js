@@ -487,7 +487,7 @@ async function viewSettings() {
           s.nvdKeySet ? h('div', null, h('button', { class: 'danger small', onclick: e => { clearNvd = true; e.target.disabled = true; nvd.placeholder = 'Key will be removed on save'; } }, 'Remove saved key')) : null,
           h('div', { class: s.cve.lastError ? 'notice warn' : 'notice' }, h('b', null, 'Database: '), `${s.cve.products} product${s.cve.products === 1 ? '' : 's'} cached`, s.cve.queue ? ` · ${s.cve.queue} downloading` : '', !isZero(s.cve.lastOk) ? ' · last update ' + fmtAgo(s.cve.lastOk) : '',
             s.cve.lastError ? h('div', null, 'Last error: ' + s.cve.lastError) : null))))),
-    h('div', { class: 'row', style: { marginTop: '20px' } }, actionButton('Save settings', save, 'primary'), h('span', { class: 'muted' }, 'Saving needs a fresh authenticator code.')));
+    h('div', { class: 'row', style: { marginTop: '20px' } }, actionButton('Save settings', save, 'primary')));
   // Regroup the panels into tabs: one short page per topic instead of one long scroll.
   {
     const grid = host.firstChild, by = {};

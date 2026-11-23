@@ -149,7 +149,7 @@ type sessions struct {
 const (
 	sessIdle     = 30 * time.Minute
 	sessAbsolute = 12 * time.Hour
-	stepUpWindow = 10 * time.Minute
+	stepUpWindow = 30 * time.Minute
 )
 
 func newSessions() *sessions {

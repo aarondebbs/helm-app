@@ -246,9 +246,6 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request, sess *sess
 
 func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, sess *session) {
 	id := r.PathValue("id")
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	err := s.st.update(func(d *data) error {
 		dev := d.Devices[id]
 		if dev == nil {
@@ -460,9 +457,6 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, sess *sess
 }
 
 func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, sess *session) {
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	var req struct {
 		Label   string `json:"label"`
 		Hours   int    `json:"hours"`

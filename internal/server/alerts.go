@@ -290,9 +290,6 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request, sess 
 }
 
 func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, sess *session) {
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	var req struct {
 		Telegram struct {
 			Enabled    bool   `json:"enabled"`

@@ -664,9 +664,6 @@ func (s *Server) handleAgentPackage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request, sess *session) {
-	if !s.needStepUp(w, sess) {
-		return
-	}
 	var req struct {
 		PackageID string `json:"packageId"`
 		Action    string `json:"action"` // install | uninstall
