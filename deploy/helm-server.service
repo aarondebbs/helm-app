@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 User=helm
 Group=helm
-ExecStart=/usr/local/bin/helm-server serve -data /var/lib/helm -listen 127.0.0.1:8787
+ExecStart=/opt/helm/helm-server serve -data /var/lib/helm -listen 127.0.0.1:8787
 # To reach RDP tunnels from your tailnet, add:  -rdp-bind <the Pi's 100.x.y.z Tailscale address>
 Restart=always
 RestartSec=3
@@ -26,7 +26,7 @@ ProtectControlGroups=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=yes
 LockPersonality=yes
-ReadWritePaths=/var/lib/helm
+ReadWritePaths=/var/lib/helm /opt/helm
 
 [Install]
 WantedBy=multi-user.target

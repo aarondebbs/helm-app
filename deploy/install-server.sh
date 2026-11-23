@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 BIN=out/helm-server-linux-arm64; [[ -f $BIN ]] || BIN=helm-server-linux-arm64
 [[ -f $BIN ]] || { echo "helm-server-linux-arm64 not found"; exit 1; }
 id helm >/dev/null 2>&1 || useradd --system --home /var/lib/helm --shell /usr/sbin/nologin helm
-install -m 0755 "$BIN" /usr/local/bin/helm-server
+mkdir -p /opt/helm; install -m 0755 "$BIN" /opt/helm/helm-server; chown -R helm:helm /opt/helm; ln -sf /opt/helm/helm-server /usr/local/bin/helm-server
 install -d -o helm -g helm -m 0700 /var/lib/helm
 if [[ -d out/server-data ]]; then cp -a out/server-data/. /var/lib/helm/; elif [[ -d server-data ]]; then cp -a server-data/. /var/lib/helm/; fi
 chown -R helm:helm /var/lib/helm
