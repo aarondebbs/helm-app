@@ -4,8 +4,15 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish from the selected branch, e.g. v0.4.1"
+        required: true
 permissions:
   contents: write
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 jobs:
   macos-pkg:
     # The .pkg can only be built with Apple's pkgbuild, so a macOS runner does it.
@@ -13,12 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
+        with: { go-version-file: go.mod, cache: false }
       - name: Build agent and package
         env:
           HELM_RELEASE_KEY: ${{ secrets.HELM_RELEASE_KEY }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           mkdir -p extra bin
           printf '%s\n' "$HELM_RELEASE_KEY" > "$RUNNER_TEMP/release.key"
           PUB=$(go run ./cmd/helm-sign pub -key "$RUNNER_TEMP/release.key" | tail -n1 | tr -d '[:space:]')
@@ -35,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version-file: go.mod }
+        with: { go-version-file: go.mod, cache: false }
       - uses: actions/download-artifact@v4
         with: { name: macos-pkg, path: extra }
       - name: Test
@@ -47,10 +54,16 @@ jobs:
           chmod 600 keys/release.key
         env:
           HELM_RELEASE_KEY: ${{ secrets.HELM_RELEASE_KEY }}
+      - name: Install MSI tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq msitools
       - name: Build
-        run: ./build.sh "${GITHUB_REF_NAME#v}"
+        run: ./build.sh "${TAG#v}"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/release/* out/SHA256SUMS --title "Helm ${GITHUB_REF_NAME#v}" --generate-notes
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/release/* out/SHA256SUMS --clobber
+          else
+            gh release create "$TAG" out/release/* out/SHA256SUMS --title "Helm ${TAG#v}" --generate-notes
+          fi
