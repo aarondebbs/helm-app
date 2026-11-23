@@ -1,0 +1,15 @@
+[Unit]
+Description=Helm management agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/helm-agent service
+Restart=always
+RestartSec=5
+User=root
+# the agent manages the machine (services, updates, power), so it cannot be sandboxed away from it
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

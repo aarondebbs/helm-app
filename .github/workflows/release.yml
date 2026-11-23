@@ -1,0 +1,56 @@
+# Builds and publishes a signed Helm release when you push a tag such as v0.4.0.
+# One-time setup: add the contents of keys/release.key as the repository secret HELM_RELEASE_KEY.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  macos-pkg:
+    # The .pkg can only be built with Apple's pkgbuild, so a macOS runner does it.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - name: Build agent and package
+        env:
+          HELM_RELEASE_KEY: ${{ secrets.HELM_RELEASE_KEY }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p extra bin
+          printf '%s\n' "$HELM_RELEASE_KEY" > "$RUNNER_TEMP/release.key"
+          PUB=$(go run ./cmd/helm-sign pub -key "$RUNNER_TEMP/release.key" | tail -n1 | tr -d '[:space:]')
+          rm -f "$RUNNER_TEMP/release.key"
+          for arch in arm64 amd64; do
+            GOOS=darwin GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=$VERSION -X main.updatePubKey=$PUB" -o bin/helm-agent-darwin-$arch ./cmd/helm-agent
+            installer/build-pkg.sh "$VERSION" bin/helm-agent-darwin-$arch $arch extra/Helm-Agent-macos-$arch.pkg
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: macos-pkg, path: extra/*.pkg }
+  build:
+    needs: macos-pkg
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - uses: actions/download-artifact@v4
+        with: { name: macos-pkg, path: extra }
+      - name: Test
+        run: go vet ./... && go test ./...
+      - name: Release signing key
+        run: |
+          mkdir -p keys
+          printf '%s\n' "$HELM_RELEASE_KEY" > keys/release.key
+          chmod 600 keys/release.key
+        env:
+          HELM_RELEASE_KEY: ${{ secrets.HELM_RELEASE_KEY }}
+      - name: Build
+        run: ./build.sh "${GITHUB_REF_NAME#v}"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/release/* out/SHA256SUMS --title "Helm ${GITHUB_REF_NAME#v}" --generate-notes

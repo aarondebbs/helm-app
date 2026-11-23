@@ -1,0 +1,32 @@
+[Unit]
+Description=Helm management server
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+User=helm
+Group=helm
+ExecStart=/usr/local/bin/helm-server serve -data /var/lib/helm -listen 127.0.0.1:8787
+# To reach RDP tunnels from your tailnet, add:  -rdp-bind <the Pi's 100.x.y.z Tailscale address>
+Restart=always
+RestartSec=3
+StateDirectory=helm
+StateDirectoryMode=0700
+UMask=0077
+
+# hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/helm
+
+[Install]
+WantedBy=multi-user.target

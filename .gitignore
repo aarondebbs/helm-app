@@ -1,0 +1,6 @@
+cmd/helm-agent/*.syso
+keys/release.key
+*.key
+out/
+*.zip
+*.tar.gz

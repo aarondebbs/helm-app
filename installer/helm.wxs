@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!--
+    Helm agent installer.
+    Public properties (all optional on upgrades, SERVER and TOKEN required on first install):
+      SERVER         https://your-pi.your-tailnet.ts.net
+      TOKEN          one-time enrollment token from the Helm website
+      CONSENT        prompt_if_present (default) | always_prompt | unattended
+      ALLOWINSECURE  1 to allow plain http:// servers (testing only)
+    Build variables: -D VERSION=x.y.z  -D AgentExe=path\to\helm-agent.exe
+  -->
+  <Product Id="*" Name="Helm Agent" Language="1033" Version="$(var.VERSION)" Manufacturer="Helm"
+           UpgradeCode="6B1D3E6A-2F0C-4B9E-9C55-7A1F5D2E8B41">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
+             Description="Helm remote management agent" Comments="Runs as a Windows service named HelmAgent" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Helm Agent is already installed." />
+    <Media Id="1" Cabinet="helm.cab" EmbedCab="yes" />
+
+    <Property Id="SERVER" />
+    <Property Id="TOKEN" />
+    <Property Id="CONSENT" />
+    <Property Id="ALLOWINSECURE" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Helm" />
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="AgentExe" Guid="3F9A6C0E-5B8D-4E1B-A3C4-1D2E7F90B6A5" Win64="yes">
+        <File Id="HelmAgentExe" Name="helm-agent.exe" Source="$(var.AgentExe)" KeyPath="yes" />
+        <ServiceInstall Id="HelmAgentSvc" Name="HelmAgent" DisplayName="Helm Agent"
+                        Description="Remote management agent (updates, power, remote screen)."
+                        Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem"
+                        Arguments="service" Vital="yes" />
+        <ServiceControl Id="HelmAgentCtl" Name="HelmAgent" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+
+      <!-- Settings live in HKLM\SOFTWARE\Helm\Agent. build-msi.sh post-processes this package with
+           msibuild (wixl cannot express these): the four Cfg* components get a condition so they are
+           only written when their property is supplied, and are marked Permanent so an MSI upgrade
+           that omits them keeps the old values. It also adds launch conditions, secure properties,
+           the service-recovery action and the uninstall clean-up actions. -->
+      <Component Id="CfgServer" Guid="A12B7D44-0C3E-4F6A-8E5D-9B1C2D3E4F50" Win64="yes">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Helm\Agent" Name="Server" Type="string" Value="[SERVER]" KeyPath="yes" />
+      </Component>
+      <Component Id="CfgToken" Guid="B23C8E55-1D4F-4A7B-9F6E-AC2D3E4F5061" Win64="yes">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Helm\Agent" Name="EnrollToken" Type="string" Value="[TOKEN]" KeyPath="yes" />
+      </Component>
+      <Component Id="CfgConsent" Guid="C34D9F66-2E50-4B8C-8A7F-BD3E4F506172" Win64="yes">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Helm\Agent" Name="ConsentMode" Type="string" Value="[CONSENT]" KeyPath="yes" />
+      </Component>
+      <Component Id="CfgInsecure" Guid="D45EA077-3F61-4C9D-9B80-CE4F50617283" Win64="yes">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Helm\Agent" Name="AllowInsecure" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="CfgProduct" Guid="E56FB188-4072-4DAE-AC91-DF5061728394" Win64="yes">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Helm\Agent" Name="ProductCode" Type="string" Value="[ProductCode]" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Main" Title="Helm Agent" Level="1">
+      <ComponentRef Id="AgentExe" />
+      <ComponentRef Id="CfgServer" />
+      <ComponentRef Id="CfgToken" />
+      <ComponentRef Id="CfgConsent" />
+      <ComponentRef Id="CfgInsecure" />
+      <ComponentRef Id="CfgProduct" />
+    </Feature>
+  </Product>
+</Wix>
