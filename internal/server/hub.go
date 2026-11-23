@@ -53,6 +53,7 @@ var commands = map[string]cmdSpec{
 	"winget.install":   {true, 2 * time.Hour},
 	"winget.uninstall": {true, 2 * time.Hour},
 	"pkg.install":      {true, 3 * time.Hour},
+	"fix.apply":        {true, 10 * time.Minute},
 }
 
 // Job tracks one command sent to an agent.

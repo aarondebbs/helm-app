@@ -463,7 +463,14 @@ function showLogin(msg) {
   const pw = h('input', { type: 'password', autocomplete: 'current-password', required: true });
   const code = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', maxLength: 6, placeholder: '6-digit code', required: true });
   const codeField = h('label', { class: 'field' }, h('span', null, 'Authenticator code'), code);
-  fetch('/api/auth/config').then(r => r.json()).then(c => { if (c && c.totp === false) { codeField.classList.add('hidden'); code.required = false; } }).catch(() => { /* keep the field */ });
+  const gbox = h('div', { class: 'stack', style: { marginBottom: '18px' } });
+  fetch('/api/auth/config').then(r => r.json()).then(c => {
+    if (c && c.totp === false) { codeField.classList.add('hidden'); code.required = false; }
+    if (c && c.google) gbox.append(h('a', { class: 'btn', href: '/api/auth/google/start', style: { justifyContent: 'center', padding: '9px' } }, 'Sign in with Google'), h('div', { class: 'muted small-text' }, 'Or use your password and authenticator code.'));
+    else gbox.style.display = 'none';
+  }).catch(() => { gbox.style.display = 'none'; });
+  const ssoErr = new URLSearchParams(location.search).get('sso_error');
+  if (ssoErr) { msg = ssoErr; history.replaceState(null, '', location.pathname + location.hash); }
   const err = h('div', { class: 'notice bad hidden' });
   const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center', padding: '10px' } }, 'Sign in');
   const form = h('form', { class: 'stack', onsubmit: async e => {
@@ -490,7 +497,7 @@ function showLogin(msg) {
           point('Self-hosted', 'Your server, your data. Sign-in is protected by a strong password and two-step verification.'))),
       h('small', null, 'Helm management console')),
     h('div', { class: 'loginform', style: { position: 'relative' } }, h('div', { class: 'themefloat' }, themeButton()),
-      h('div', { class: 'login' }, h('h1', null, 'Sign in'), h('div', { class: 'tagline' }, 'Use your administrator account'), h('div', { class: 'panel' }, form)))));
+      h('div', { class: 'login' }, h('h1', null, 'Sign in'), h('div', { class: 'tagline' }, 'Use your administrator account'), h('div', { class: 'panel' }, gbox, form)))));
   user.value ? pw.focus() : user.focus();
 }
 

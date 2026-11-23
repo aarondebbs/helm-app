@@ -3,6 +3,6 @@
 (function () {
   var t = null;
   try { t = JSON.parse(localStorage.getItem('helm.theme')); } catch (e) { /* no storage */ }
-  if (t !== 'dark' && t !== 'light') t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  if (t !== 'dark' && t !== 'light') t = 'dark';
   document.documentElement.setAttribute('data-theme', t);
 })();

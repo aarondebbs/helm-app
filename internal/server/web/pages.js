@@ -88,6 +88,106 @@ async function viewDashboard() {
   draw(); every(15000, draw);
 }
 
+// ---------- Google sign-in ----------
+function googlePanel() {
+  const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
+  const draw = async () => {
+    let g; try { g = await api('GET', '/api/settings/google'); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
+    const id = h('input', { type: 'text', value: g.clientId, autocomplete: 'off', spellcheck: 'false', placeholder: '123456789-abc.apps.googleusercontent.com' });
+    const secret = h('input', { type: 'password', autocomplete: 'off', placeholder: g.secretSet ? '•••••••• (saved)' : 'Client secret' });
+    const email = h('input', { type: 'email', value: g.email, autocomplete: 'off', placeholder: 'you@gmail.com' });
+    clear(box).append(
+      h('div', { class: g.enabled ? 'notice ok' : 'notice' }, g.enabled ? 'Google sign-in is on. The sign-in page shows a Google button.' : 'Google sign-in is off. Fill in the three fields below to turn it on.'),
+      h('ol', { class: 'small-text', style: { margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '4px' } },
+        h('li', null, 'In the Google Cloud console, create a project and open APIs & Services, then OAuth consent screen. Choose External and add your Gmail address as a test user.'),
+        h('li', null, 'Open Credentials, create an OAuth client ID of type Web application, and add the redirect address below as an authorized redirect URI.'),
+        h('li', null, 'Paste the client ID and client secret here, enter the Gmail address that may sign in, and save.')),
+      h('label', { class: 'field' }, h('span', null, 'Redirect address'), h('div', { class: 'row', style: { flexWrap: 'nowrap' } }, h('input', { type: 'text', readOnly: true, value: g.redirectUri, style: { flex: 1 } }), copyButton(() => g.redirectUri))),
+      h('label', { class: 'field' }, h('span', null, 'Client ID'), id),
+      h('label', { class: 'field' }, h('span', null, 'Client secret'), secret),
+      h('label', { class: 'field' }, h('span', null, 'Google address that may sign in'), email, h('span', { class: 'hint' }, 'Only this account is let in. The password and authenticator code keep working as a fallback.')),
+      h('div', { class: 'row' }, actionButton('Save', async () => { await api('PUT', '/api/settings/google', { clientId: id.value, clientSecret: secret.value, email: email.value }); toast('Google sign-in saved', 'ok'); draw(); }, 'primary'),
+        g.clientId ? actionButton('Turn off and remove', async () => { if (await confirmDialog('Remove the Google sign-in settings?', 'Remove', true)) { await api('PUT', '/api/settings/google', { clear: true }); draw(); } }, 'danger') : null),
+      h('p', { class: 'muted small-text' }, 'Signing in with Google replaces the password and code at the sign-in page. Sensitive changes (settings, backups, commands that need confirmation) still ask for your authenticator code.'));
+  };
+  draw();
+  return panel('Google sign-in', 'Let your Google account open the console', null, box);
+}
+
+// ---------- patch window ----------
+function patchWindowPanel() {
+  const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const draw = async () => {
+    let w; try { w = await api('GET', '/api/patch-window'); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
+    const st = { enabled: w.enabled, days: new Set(w.days), startHour: w.startHour, hours: w.hours || 4, allowReboot: w.allowReboot, securityOnly: w.securityOnly };
+    const dayRow = h('div', { class: 'pills' }, DAYS.map((d, i) => {
+      const b = h('button', { type: 'button', class: 'pill' + (st.days.has(i) ? ' on' : ''), 'aria-pressed': String(st.days.has(i)) }, d);
+      b.addEventListener('click', () => { st.days.has(i) ? st.days.delete(i) : st.days.add(i); b.classList.toggle('on', st.days.has(i)); b.setAttribute('aria-pressed', String(st.days.has(i))); });
+      return b;
+    }));
+    const start = h('select', null, Array.from({ length: 24 }, (_, i) => h('option', { value: i, selected: i === st.startHour }, String(i).padStart(2, '0') + ':00')));
+    const len = h('select', null, [1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => h('option', { value: n, selected: n === st.hours }, n + (n === 1 ? ' hour' : ' hours'))));
+    clear(box).append(
+      h('div', { class: w.enabled ? 'notice ok' : 'notice' }, w.enabled ? 'Online PCs install pending updates inside the window, one PC at a time, at most once a day each.' : 'Off. PCs only update when you install updates yourself.'),
+      h('label', { class: 'row', style: { justifyContent: 'space-between' } }, h('span', null, 'Install updates automatically in the window'), toggle(st.enabled, v => { st.enabled = v; })),
+      h('div', { class: 'field' }, h('span', null, 'Days'), dayRow),
+      h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Starts at'), start), h('label', { class: 'field' }, h('span', null, 'Window length'), len)),
+      h('label', { class: 'row', style: { justifyContent: 'space-between' } }, h('span', null, 'Only security updates'), toggle(st.securityOnly, v => { st.securityOnly = v; })),
+      h('label', { class: 'row', style: { justifyContent: 'space-between' } }, h('span', null, 'Allow restarts when an update needs one'), toggle(st.allowReboot, v => { st.allowReboot = v; })),
+      h('p', { class: 'muted small-text' }, 'Times are the server\u2019s local time. A PC that is off during the window is patched the next time it is online inside one. Results appear in the activity log.'),
+      h('div', { class: 'row' }, actionButton('Save window', async () => {
+        await api('PUT', '/api/patch-window', { enabled: st.enabled, days: [...st.days].sort(), startHour: +start.value, hours: +len.value, allowReboot: st.allowReboot, securityOnly: st.securityOnly });
+        toast('Patch window saved', 'ok'); draw();
+      }, 'primary')));
+  };
+  draw();
+  return panel('Patch window', 'Install updates automatically at a quiet time', null, box);
+}
+
+// ---------- backups and health ----------
+function backupPanel() {
+  const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
+  const uptime = sec => sec >= 86400 ? Math.floor(sec / 86400) + ' d ' + Math.floor(sec % 86400 / 3600) + ' h' : sec >= 3600 ? Math.floor(sec / 3600) + ' h ' + Math.floor(sec % 3600 / 60) + ' min' : Math.floor(sec / 60) + ' min';
+  const draw = async () => {
+    let hl, bl;
+    try { [hl, bl] = await Promise.all([api('GET', '/api/health'), api('GET', '/api/backups')]); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
+    const kv = rows => h('dl', { class: 'kv' }, rows.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]));
+    const file = h('input', { type: 'file', accept: '.zip', class: 'hidden' });
+    file.addEventListener('change', async () => {
+      const f = file.files[0]; if (!f) return;
+      try {
+        await ensureStepUp();
+        const res = await fetch('/api/backups/upload', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': S.csrf, 'Content-Type': 'application/zip' }, body: f });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'upload failed');
+        toast('Backup added. Restore it from the list.', 'ok'); draw();
+      } catch (e) { toast(e.message, 'bad'); }
+      file.value = '';
+    });
+    clear(box).append(
+      (hl.warnings || []).map(w => h('div', { class: 'notice warn' }, w)),
+      kv([['Version', hl.version], ['Running for', uptime(hl.uptimeSec)], ['PCs online', hl.devices.online + ' of ' + hl.devices.approved],
+        ['Disk free', hl.disk.total ? fmtBytes(hl.disk.free) + ' of ' + fmtBytes(hl.disk.total) : 'unknown'],
+        ['Data size', fmtBytes(hl.data.state + hl.data.db + hl.data.audit)], ['Last backup', hl.backups.last ? fmtAgo(hl.backups.last.created) : 'never']]),
+      h('div', { class: 'row' }, actionButton('Back up now', async () => { await api('POST', '/api/backups', {}); toast('Backup created', 'ok'); draw(); }, 'primary'),
+        h('button', { onclick: () => file.click() }, 'Upload a backup…'), file),
+      bl.backups.length ? h('div', { class: 'tablewrap' }, table(['Backup', 'Created', 'Size', ''].map(x => ({ label: x })), bl.backups.map(b => h('tr', null,
+        h('td', { class: 'mono' }, b.name.replace(/^helm-|\.zip$/g, '')), h('td', { class: 'nowrap' }, fmtAgo(b.created)), h('td', { class: 'num' }, fmtBytes(b.size)),
+        h('td', { class: 'nowrap right' }, h('div', { class: 'row tight', style: { justifyContent: 'flex-end' } },
+          actionButton('Download', async () => { await ensureStepUp(); downloadFile('/api/backups/' + encodeURIComponent(b.name)); }, 'small'),
+          actionButton('Restore', async () => {
+            if (!(await confirmDialog('Restore this backup? Settings, devices and history are replaced by the backup\'s content, and you will be signed out. A safety copy of the current state is made first.', 'Restore', true))) return;
+            await api('POST', '/api/backups/restore', { name: b.name }); toast('Restored. Sign in again.', 'ok'); setTimeout(() => location.reload(), 800);
+          }, 'small danger'),
+          actionButton('Delete', async () => { if (await confirmDialog('Delete this backup?', 'Delete', true)) { await api('DELETE', '/api/backups/' + encodeURIComponent(b.name)); draw(); } }, 'small ghost')))))))
+        : h('p', { class: 'muted' }, 'No backups yet.'),
+      h('p', { class: 'muted small-text' }, 'A backup is made automatically every day and the newest ' + bl.keep + ' are kept. Backups contain your password hash and device credentials: store downloads safely.'));
+  };
+  draw();
+  return panel('Backups and health', 'Automatic daily backups, one-click restore', null, box);
+}
+
 // ---------- security ----------
 route(/^\/security(?:\/([a-z]+))?$/, viewSecurity);
 async function viewSecurity(tab) {
@@ -149,11 +249,34 @@ async function viewSecurity(tab) {
         x.score ? h('span', { class: 'muted', style: { fontWeight: 400 } }, '  CVSS ' + x.score.toFixed(1)) : null, x.exploited ? h('span', { class: 'badge kev', style: { marginLeft: '8px' } }, 'actively exploited') : null),
         x.detail ? h('div', { class: 'fd' }, x.detail) : null, x.fix ? h('div', { class: 'ff' }, '→ ' + x.fix) : null,
         h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, x.kind === 'cve' ? 'Potentially affected: the version matches the vulnerable range; Windows-level fixes or backported patches are not detected.' : '')),
-      h('div', { class: 'right' }, h('button', { class: 'small', onclick: () => affectedDialog(x) }, plural(x.devices.length, 'PC')))))),
+      h('div', { class: 'right' }, h('button', { class: 'small', onclick: () => affectedDialog(x) }, plural(x.devices.length, 'PC')), fixButton(x))))),
       list.length > 200 ? h('p', { class: 'muted', style: { marginTop: '10px' } }, 'Showing the first 200 of ' + list.length + '. Export the CSV for everything.') : null);
   };
   const load = async () => { try { data = await api('GET', '/api/security'); if (my === routeToken) draw(); } catch (e) { clear(host).append('Could not load: ' + e.message); } };
   load(); every(12000, load);
+}
+
+// One-click fixes for configuration findings. The console only ever sends a check id; the agent decides what that id
+// means on its own platform and refuses anything it does not know.
+const FIXABLE = new Set(['firewall', 'av_realtime', 'av_signatures', 'smb1', 'rdp', 'uac', 'guest', 'gatekeeper', 'autoupdate', 'auto_updates', 'ntp']);
+function fixButton(x) {
+  const id = x.kind === 'config' && (x.key || '').startsWith('cfg:') ? x.key.slice(4) : '';
+  if (!FIXABLE.has(id)) return null;
+  const b = h('button', { class: 'small primary', style: { marginTop: '6px' } }, 'Fix on ' + plural(x.devices.length, 'PC'));
+  b.addEventListener('click', action(b, async () => {
+    if (!confirm('Apply the fix on ' + plural(x.devices.length, 'PC') + '?\n\n' + x.title + (x.fix ? '\n' + x.fix : ''))) return;
+    let ok = 0; const bad = [];
+    for (const d of x.devices) {
+      try {
+        const job = await api('POST', '/api/devices/' + d.id + '/cmd', { name: 'fix.apply', args: { id }, wait: 600 });
+        if (job && job.status === 'error') bad.push(d.name + ': ' + job.err); else ok++;
+      } catch (e) { bad.push(d.name + ': ' + e.message); }
+      try { await api('POST', '/api/devices/' + d.id + '/scan', {}); } catch (e) { /* rescan is best effort */ }
+    }
+    if (ok) toast('Fixed on ' + plural(ok, 'PC') + '. Rescanning.', 'ok');
+    if (bad.length) toast(bad.slice(0, 3).join('; '), 'bad');
+  }));
+  return b;
 }
 
 function affectedDialog(x) {
@@ -256,7 +379,7 @@ async function viewSummary() {
 route(/^\/settings$/, viewSettings);
 async function viewSettings() {
   const host = h('div', null, h('span', { class: 'spinner' }));
-  shell('settings', [pageHead('Settings', 'Notifications, alert rules and vulnerability scanning'), host]);
+  shell('settings', [pageHead('Settings', 'Updates, alerts, scanning and backups'), host]);
   const my = routeToken;
   let s;
   try { s = await api('GET', '/api/settings'); } catch (e) { clear(host).append('Could not load: ' + e.message); return; }
@@ -304,6 +427,7 @@ async function viewSettings() {
           h('label', { class: 'field' }, h('span', null, 'GitHub repository'), repo, h('span', { class: 'hint' }, 'Owner/name of the repository that publishes Helm releases (public, or any repository whose releases this server can read). Every file is signature-checked before it is installed.')),
           h('div', { class: 'row spread' }, h('span', null, 'Roll agent updates out to PCs automatically'), manualAgents),
           updBox)),
+        backupPanel(),
         panel('Telegram notifications', 'Get alerts on your phone', null, h('div', { class: 'stack' },
           h('div', { class: 'row spread' }, h('span', null, 'Send alerts to Telegram'), tgOn),
           h('label', { class: 'field' }, h('span', null, 'Bot token'), token, h('span', { class: 'hint' }, 'Create a bot with @BotFather in Telegram and paste the token it gives you.')),
@@ -324,6 +448,24 @@ async function viewSettings() {
           h('div', { class: s.cve.lastError ? 'notice warn' : 'notice' }, h('b', null, 'Database: '), `${s.cve.products} product${s.cve.products === 1 ? '' : 's'} cached`, s.cve.queue ? ` · ${s.cve.queue} downloading` : '', !isZero(s.cve.lastOk) ? ' · last update ' + fmtAgo(s.cve.lastOk) : '',
             s.cve.lastError ? h('div', null, 'Last error: ' + s.cve.lastError) : null))))),
     h('div', { class: 'row', style: { marginTop: '20px' } }, actionButton('Save settings', save, 'primary'), h('span', { class: 'muted' }, 'Saving needs a fresh authenticator code.')));
+  // Regroup the panels into tabs: one short page per topic instead of one long scroll.
+  {
+    const grid = host.firstChild, by = {};
+    grid.querySelectorAll('.panel').forEach(p => { const t = p.querySelector('h3'); if (t) by[t.textContent] = p; });
+    by['Google sign-in'] = googlePanel();
+    by['Patch window'] = patchWindowPanel();
+    const groups = [['updates', 'Updates', ['Updates', 'Patch window']], ['alerts', 'Alerts and notifications', ['Alert rules', 'Thresholds', 'Telegram notifications']],
+      ['scanning', 'Scanning', ['Vulnerability scanning']], ['signin', 'Sign-in', ['Google sign-in']], ['backups', 'Backups and health', ['Backups and health']]];
+    let cur = store.get('settab', 'updates'); if (!groups.some(g => g[0] === cur)) cur = 'updates';
+    const saveRow = host.lastChild, tabsEl = h('div', { class: 'tabs' }), panes = {};
+    const show = k => { cur = k; store.set('settab', k); groups.forEach(([id]) => { panes[id].classList.toggle('hidden', id !== k); }); [...tabsEl.children].forEach((a, n) => a.classList.toggle('active', groups[n][0] === k)); saveRow.classList.toggle('hidden', k === 'backups' || k === 'signin'); };
+    groups.forEach(([id, label, titles]) => {
+      panes[id] = h('div', { class: 'stack', style: { maxWidth: '780px' } }, titles.map(t => by[t]).filter(Boolean));
+      tabsEl.append(h('a', { role: 'tab', tabindex: 0, style: { cursor: 'pointer' }, onclick: () => show(id), onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(id); } } }, label));
+    });
+    clear(host).append(tabsEl, ...groups.map(g => panes[g[0]]), saveRow);
+    show(cur);
+  }
 }
 
 // ---------- my account ----------

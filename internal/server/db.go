@@ -27,6 +27,17 @@ type Settings struct {
 	// Cloud updates: GitHub "owner/repo" holding signed releases; agents are imported automatically unless manual.
 	UpdateRepo         string `json:"updateRepo"`
 	ManualAgentUpdates bool   `json:"manualAgentUpdates"`
+	// Sign in with Google for the single administrator (see sso.go).
+	Google GoogleSettings `json:"google"`
+	// Patch window: when approved devices install pending updates on their own.
+	Patch PatchSettings `json:"patch"`
+}
+
+// GoogleSettings holds the OAuth client of the Google Cloud project and the one address allowed to sign in.
+type GoogleSettings struct {
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	Email        string `json:"email"`
 }
 
 // Alert rule identifiers.
@@ -170,6 +181,7 @@ type dbData struct {
 	Sessions  []*SessionRec        `json:"sessions"`
 	Seen      map[string]time.Time `json:"seen,omitempty"`
 	Inventory map[string]*InvRec   `json:"inventory,omitempty"`
+	Patched   map[string]string    `json:"patched,omitempty"` // device id -> date (YYYY-MM-DD) of its last window run
 }
 
 // InvRec is the last hardware/OS inventory reported by a device, kept so it stays visible while the PC is offline.
@@ -209,39 +221,7 @@ func OpenDB(dir string) (*DB, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	def := defaultSettings()
-	if db.d.Settings.Rules == nil {
-		db.d.Settings.Rules = map[string]bool{}
-	}
-	for k, v := range def.Rules {
-		if _, ok := db.d.Settings.Rules[k]; !ok {
-			db.d.Settings.Rules[k] = v
-		}
-	}
-	if db.d.Settings.OfflineMinutes == 0 {
-		db.d.Settings.OfflineMinutes = def.OfflineMinutes
-	}
-	if db.d.Settings.DiskFreePct == 0 {
-		db.d.Settings.DiskFreePct = def.DiskFreePct
-	}
-	if db.d.Settings.ScanEveryHours == 0 {
-		db.d.Settings.ScanEveryHours = def.ScanEveryHours
-	}
-	if db.d.Scripts == nil {
-		db.d.Scripts = map[string]*Script{}
-	}
-	if db.d.Schedules == nil {
-		db.d.Schedules = map[string]*Schedule{}
-	}
-	if db.d.Inventory == nil {
-		db.d.Inventory = map[string]*InvRec{}
-	}
-	if db.d.Scans == nil {
-		db.d.Scans = map[string]*Scan{}
-	}
-	if db.d.Packages == nil {
-		db.d.Packages = map[string]*Package{}
-	}
+	db.d.normalize()
 	go db.saver()
 	return db, nil
 }
@@ -360,4 +340,41 @@ func sortedSchedules(m map[string]*Schedule) []Schedule {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Created.Before(out[j].Created) })
 	return out
+}
+
+// normalize fills defaults and nil maps (after loading or restoring).
+func (d *dbData) normalize() {
+	def := defaultSettings()
+	if d.Settings.Rules == nil {
+		d.Settings.Rules = map[string]bool{}
+	}
+	for k, v := range def.Rules {
+		if _, ok := d.Settings.Rules[k]; !ok {
+			d.Settings.Rules[k] = v
+		}
+	}
+	if d.Settings.OfflineMinutes == 0 {
+		d.Settings.OfflineMinutes = def.OfflineMinutes
+	}
+	if d.Settings.DiskFreePct == 0 {
+		d.Settings.DiskFreePct = def.DiskFreePct
+	}
+	if d.Settings.ScanEveryHours == 0 {
+		d.Settings.ScanEveryHours = def.ScanEveryHours
+	}
+	if d.Scripts == nil {
+		d.Scripts = map[string]*Script{}
+	}
+	if d.Schedules == nil {
+		d.Schedules = map[string]*Schedule{}
+	}
+	if d.Inventory == nil {
+		d.Inventory = map[string]*InvRec{}
+	}
+	if d.Scans == nil {
+		d.Scans = map[string]*Scan{}
+	}
+	if d.Packages == nil {
+		d.Packages = map[string]*Package{}
+	}
 }

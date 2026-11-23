@@ -761,5 +761,5 @@ func parseVer(v string) [3]int {
 // handleAuthConfig tells the login page whether to ask for an authenticator code.
 func (s *Server) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
 	adm := s.st.admin()
-	writeJSON(w, 200, map[string]bool{"totp": adm == nil || adm.TOTPSecret != ""})
+	writeJSON(w, 200, map[string]bool{"totp": adm == nil || adm.TOTPSecret != "", "google": s.googleOn()})
 }

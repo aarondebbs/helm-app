@@ -246,6 +246,15 @@ func TestFullFlow(t *testing.T) {
 	if j := e.cmd(id, "updates.check", nil); j.Status != "ok" || !strings.Contains(string(j.Data), "Demo Update") {
 		t.Fatalf("updates.check: %+v", j)
 	}
+	if j := e.cmd(id, "fix.apply", map[string]any{"id": "firewall"}); j.Status != "ok" || !strings.Contains(string(j.Data), "firewall") {
+		t.Fatalf("fix.apply: %+v", j)
+	}
+	if j := e.cmd(id, "fix.apply", map[string]any{"id": "format_disk; rm -rf /"}); j.Status != "error" {
+		t.Fatalf("fix.apply must refuse unknown ids: %+v", j)
+	}
+	if st, b := e.do("GET", "/healthz", nil); st != 200 || !strings.Contains(string(b), `"ok"`) {
+		t.Fatalf("healthz: %d %s", st, b)
+	}
 	if j := e.cmd(id, "updates.install", map[string]any{"reboot": false}); j.Status != "ok" || !strings.Contains(string(j.Data), `"installed":1`) {
 		t.Fatalf("updates.install: %+v", j)
 	}

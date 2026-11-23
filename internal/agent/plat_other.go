@@ -175,6 +175,7 @@ func wingetFixture(args []string) (string, bool) {
 }
 
 var fixtures = map[string]string{
+	"fix":            `{"ok":true}`,
 	"inventory":      `{"computerName":"DEV","osCaption":"Dev OS","cpu":"Test CPU","cores":4,"ramBytes":8589934592}`,
 	"software":       `[{"name":"Demo App","version":"1.0","publisher":"Acme","installDate":"20240101"}]`,
 	"processes":      `[{"pid":100,"name":"demo","cpu":1.5,"memMB":10.2,"user":"dev","path":"/bin/demo"}]`,

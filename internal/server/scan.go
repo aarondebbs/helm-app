@@ -187,7 +187,11 @@ func (s *Server) computeFindings(sc *Scan) ScanView {
 			Detail: fmt.Sprintf("%s (process %s). %s", p.Address, orDash(p.Process), info.Note),
 			Fix:    "Close the service if unused, or block the port in the firewall.", Cat: "Exposure"})
 	}
-	// missing patches
+	// missing patches: Windows updates are listed one by one; Linux and macOS package updates are grouped,
+	// because a server can easily have dozens and one row per package buries everything else.
+	var pkgNames []string
+	pkgSev := "low"
+	rank := map[string]int{"low": 0, "medium": 1, "high": 2, "critical": 3}
 	for _, p := range sc.Patches {
 		sev := map[string]string{"critical": "critical", "important": "high", "moderate": "medium", "low": "low"}[strings.ToLower(p.Severity)]
 		if sev == "" {
@@ -202,12 +206,29 @@ func (s *Server) computeFindings(sc *Scan) ScanView {
 				sev = "low"
 			}
 		}
-		what := "A Windows update"
 		if len(p.KB) == 0 { // Linux and macOS updates have no KB number
-			what = "A package update"
+			pkgNames = append(pkgNames, p.Title)
+			if rank[sev] > rank[pkgSev] {
+				pkgSev = sev
+			}
+			continue
 		}
 		out = append(out, Finding{Key: "patch:" + p.Title, Kind: "patch", Severity: sev, Title: "Missing update: " + p.Title,
-			Detail: what + " is available but not installed.", Fix: "Install it from the Updates tab.", Cat: "Patching"})
+			Detail: "A Windows update is available but not installed.", Fix: "Install it from the Updates tab.", Cat: "Patching"})
+	}
+	if n := len(pkgNames); n > 0 {
+		sort.Strings(pkgNames)
+		shown := pkgNames
+		more := ""
+		if n > 6 {
+			shown, more = pkgNames[:6], fmt.Sprintf(" and %d more", n-6)
+		}
+		title := fmt.Sprintf("%d package updates are waiting", n)
+		if n == 1 {
+			title = "1 package update is waiting"
+		}
+		out = append(out, Finding{Key: "patch:packages", Kind: "patch", Severity: pkgSev, Title: title,
+			Detail: strings.Join(shown, ", ") + more + ".", Fix: "Install them from the Updates tab, or let the patch window do it.", Cat: "Patching"})
 	}
 	// CVEs
 	if s.cve != nil {

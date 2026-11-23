@@ -20,24 +20,24 @@
   --shadow: none; --shadow-md: 0 2px 10px rgba(16, 28, 26, .12); --shadow-lg: 0 12px 40px rgba(16, 28, 26, .24);
   --nav: #ffffff; --nav2: #dfeeeb; --nav-text: #3c4a47; --nav-mute: #66756f; --nav-line: #dae1de; --nav-active: #0b6e66;
   --ink: #15211f;
-  --side: 212px;
+  --side: 224px;
 }
 html[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d1312; --panel: #141c1b; --panel2: #1c2726; --hover: #192322; --head: #111918;
-  --text: #e4ecea; --text2: #b3c1bd; --muted: #84958f; --line: #223130; --line2: #2f4240; --line3: #415653;
-  --accent: #3dbfb3; --accent-hover: #68d5cb; --accent-soft: #123532; --accent-text: #04201d; --accent-line: #20605a;
-  --ok: #4cc27f; --ok-soft: #12301f; --warn: #e5ab45; --warn-soft: #2e2410; --bad: #f1746b; --bad-soft: #351817;
-  --crit: #f48278; --crit-soft: #3a1917; --high: #f09068; --high-soft: #381f14;
-  --med: #e8ae4c; --med-soft: #33260f; --low: #7fbfd2; --low-soft: #14303a;
-  --n-ok: #86dcab; --n-warn: #f0cb82; --n-bad: #f7aaa3; --n-info: #8fdcd3;
-  --b-ok: #1f5237; --b-warn: #52401a; --b-bad: #5b2724; --b-info: #1f5550;
-  --sev-c: #f4685c; --sev-h: #f08a5a; --sev-m: #e8ae4c; --sev-l: #7fbfd2;
-  --dot-off: #4a5d59; --dot-on: #4cc27f;
-  --term-bg: #090e0d; --term-fg: #d4e0dd;
+  --bg: #0f131a; --panel: #171c25; --panel2: #1f2632; --hover: #1c2330; --head: #131822;
+  --text: #e6ebf2; --text2: #aab4c3; --muted: #8b97a8; --line: #232a35; --line2: #2b3340; --line3: #3b4556;
+  --accent: #4c8df6; --accent-hover: #7db4ff; --accent-soft: #1d2a40; --accent-text: #ffffff; --accent-line: #2e4f86;
+  --ok: #4cc38a; --ok-soft: #16302a; --warn: #f2c94c; --warn-soft: #33301a; --bad: #ff6b6b; --bad-soft: #3a1d22;
+  --crit: #ff6b6b; --crit-soft: #3a1d22; --high: #ffa45c; --high-soft: #38271a;
+  --med: #f2c94c; --med-soft: #33301a; --low: #7db4ff; --low-soft: #1d2a40;
+  --n-ok: #7fdcae; --n-warn: #f6dc86; --n-bad: #ffa3a3; --n-info: #9cc5ff;
+  --b-ok: #1f4d3d; --b-warn: #52481f; --b-bad: #5b2a30; --b-info: #2e4f86;
+  --sev-c: #ff6b6b; --sev-h: #ffa45c; --sev-m: #f2c94c; --sev-l: #7db4ff;
+  --dot-off: #4a5565; --dot-on: #4cc38a;
+  --term-bg: #0a0d12; --term-fg: #d6dde8;
   --shadow-md: 0 2px 12px rgba(0, 0, 0, .45); --shadow-lg: 0 14px 44px rgba(0, 0, 0, .6);
-  --nav: #101716; --nav2: #17302e; --nav-text: #b3c1bd; --nav-mute: #84958f; --nav-line: #223130; --nav-active: #3dbfb3;
-  --ink: #070b0a;
+  --nav: #131822; --nav2: #1d2a40; --nav-text: #aab4c3; --nav-mute: #6b7686; --nav-line: #232a35; --nav-active: #4c8df6;
+  --ink: #0a0d12; --radius: 6px;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text);
@@ -57,14 +57,14 @@ code { background: var(--panel2); padding: 1px 5px; border-radius: 2px; }
   display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; padding: 0 0 12px; overflow-y: auto; }
 .brand { font-weight: 650; font-size: 1.25rem; display: flex; align-items: center; gap: 9px; padding: 0 16px; height: 52px; color: var(--text); border-bottom: 1px solid var(--nav-line); }
 .brand svg { width: 24px; height: 24px; color: var(--accent); } .brand span { color: var(--text); }
-.navgroup { font-size: 12.5px; color: var(--nav-mute); padding: 18px 16px 5px; font-weight: 600; }
-.navlink { display: flex; align-items: center; gap: 10px; padding: 6px 16px; color: var(--nav-text); font-weight: 500; position: relative; border-left: 3px solid transparent; }
+.navgroup { font-size: 11px; color: var(--nav-mute); padding: 18px 20px 6px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.navlink { display: flex; align-items: center; gap: 12px; margin: 1px 8px; padding: 8px 12px; border-radius: 5px; color: var(--nav-text); font-weight: 500; position: relative; }
 .navlink:hover { background: var(--hover); color: var(--text); text-decoration: none; }
-.navlink.active { background: var(--nav2); color: var(--text); font-weight: 600; border-left-color: var(--nav-active); }
-.navlink .count { margin-left: auto; background: var(--bad); color: #fff; font-size: 12px; font-weight: 600; padding: 0 6px; border-radius: 2px; line-height: 17px; font-variant-numeric: tabular-nums; }
+.navlink.active { background: var(--nav2); color: #fff; font-weight: 600; } .navlink.active .ico { stroke: var(--accent-hover); }
+.navlink .count { margin-left: auto; background: var(--bad-soft); color: var(--bad); font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 9px; line-height: 16px; font-variant-numeric: tabular-nums; }
 .ico { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 button .ico, .btn .ico { width: 15px; height: 15px; }
-.sidefoot { margin-top: auto; padding: 12px 16px 0; border-top: 1px solid var(--nav-line); color: var(--nav-mute); font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
+.sidefoot { margin-top: auto; padding: 14px 20px 0; border-top: 1px solid var(--nav-line); color: var(--nav-mute); font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar { display: flex; align-items: center; gap: 12px; padding: 0 28px; height: 52px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 .topbar .spacer { flex: 1; }
@@ -146,7 +146,7 @@ html[data-theme="dark"] .seg button.on { background: var(--accent); color: var(-
 a.kpi:hover, a.tile:hover { text-decoration: none; background: var(--hover); }
 .kpi .lbl, .tile .tl { color: var(--text2); font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .tile .tl::before, .kpi .lbl::before { content: ""; width: 8px; height: 8px; background: var(--tc); flex: none; }
-.kpi .val, .tile .tv { font-size: 2rem; font-weight: 300; line-height: 1.15; margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.kpi .val, .tile .tv { font-size: 2rem; font-weight: 600; line-height: 1.15; margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .kpi .val small, .tile .tv small { font-size: 1rem; font-weight: 400; color: var(--muted); } .kpi .note, .tile .tn { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .tile.ok, .kpi.ok { --tc: var(--ok); } .tile.warn, .kpi.warn { --tc: var(--warn); } .tile.bad, .kpi.bad { --tc: var(--bad); } .tile.info, .kpi.accent { --tc: var(--accent); }
 .tile .ti { display: none; }
@@ -160,7 +160,7 @@ a.kpi:hover, a.tile:hover { text-decoration: none; background: var(--hover); }
 /* ---------- dashboard: statement and fleet map ---------- */
 .statement { --sc: var(--accent); display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 46%); gap: 44px; align-items: start; padding: 6px 0 26px; margin-bottom: 22px; border-bottom: 1px solid var(--line2); }
 .statement.ok { --sc: var(--ok); } .statement.warn { --sc: var(--warn); } .statement.bad { --sc: var(--bad); }
-.statement h2 { font-size: clamp(1.9rem, 3.2vw, 2.7rem); font-weight: 300; line-height: 1.1; margin: 0 0 10px; padding-left: 16px; border-left: 6px solid var(--sc); }
+.statement h2 { font-size: clamp(1.9rem, 3.2vw, 2.7rem); font-weight: 600; line-height: 1.1; margin: 0 0 10px; padding-left: 16px; border-left: 6px solid var(--sc); }
 .statement p { margin: 0 0 16px; padding-left: 22px; max-width: 58ch; color: var(--text2); font-size: 1.05rem; }
 .statement .acts { display: flex; gap: 8px; flex-wrap: wrap; padding-left: 22px; }
 .fleet { display: flex; flex-direction: column; gap: 10px; }
@@ -289,7 +289,7 @@ html[data-theme="dark"] .toast { background: #1d2b29; }
 .loginpage { min-height: 100vh; display: grid; grid-template-columns: minmax(340px, 42%) 1fr; background: var(--bg); }
 .loginhero { color: #cfdcd9; padding: 48px 56px 36px; display: flex; flex-direction: column; justify-content: space-between; background: var(--ink); }
 .loginhero .brand { padding: 0; height: auto; border: 0; font-size: 1.6rem; color: #fff; } .loginhero .brand span { color: #fff; } .loginhero .brand svg { width: 30px; height: 30px; color: #5fd0c4; }
-.loginhero h2 { color: #fff; font-size: 2.3rem; font-weight: 300; line-height: 1.12; max-width: 13em; margin: 0 0 26px; }
+.loginhero h2 { color: #fff; font-size: 2.3rem; font-weight: 600; line-height: 1.12; max-width: 13em; margin: 0 0 26px; }
 .loginhero ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; max-width: 30em; }
 .loginhero li { display: flex; gap: 12px; align-items: flex-start; } .loginhero li .ico { width: 18px; height: 18px; color: #5fd0c4; margin-top: 3px; }
 .loginhero small { color: #82968f; }

@@ -108,6 +108,37 @@ Helm 0.4.0 can update itself and the agents from a GitHub repository you own.
 
 **Without GitHub**: bump `VERSION`, run `./build.sh`, copy `out/server-data/.` over `/var/lib/helm/`.
 
+## Backups and health
+
+Settings, Backups and health shows disk space, memory, uptime and the state of the data files. The server makes a
+backup every day (kept for 14 days) and you can create, download and restore backups from the same page. A restore
+asks for a fresh authenticator code. `GET /healthz` answers `{"status":"ok"}` without signing in and returns 503 when
+the data folder cannot be written, so an uptime monitor can watch the Pi.
+
+## Sign in with Google (optional)
+
+1. In the Google Cloud console create a project, open APIs & Services, OAuth consent screen, choose External and add
+   your Gmail address as a test user.
+2. Credentials, Create credentials, OAuth client ID, type Web application. Add the redirect address shown in
+   Settings, Sign-in as an authorized redirect URI. It must match the address you open the console on (for example
+   your Tailscale Funnel host) exactly.
+3. Paste the client ID and secret into Settings, Sign-in, enter your Gmail address and save.
+
+Only that one address can sign in. Sensitive changes still ask for the authenticator code.
+
+## Patch window
+
+Settings, Updates, Patch window installs pending updates by itself on online PCs: pick the days, start time and length,
+and whether to allow restarts or limit it to security updates. PCs are patched one at a time, at most once a day each,
+and results appear in the activity log. Times use the server's local time.
+
+## One-click fixes
+
+On the Security page, configuration findings that have a safe fix show a Fix button (Windows firewall, Defender
+real-time protection, SMBv1, UAC, Guest account, Gatekeeper, automatic updates, time sync, unattended-upgrades). The
+console only sends the name of the check. The agent maps it to a fixed command and refuses anything else. Nothing that
+could lock you out of a remote server (SSH settings, disk encryption) is offered.
+
 ## Inventory
 Hardware/OS inventory is collected from each online PC daily, stored on the server and shown on the device Overview (*Collect full inventory* refreshes). *Reports -> Hardware inventory* exports CSV.
 

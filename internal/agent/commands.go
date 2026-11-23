@@ -87,6 +87,7 @@ func (a *Agent) baseHandlers() map[string]handlerFn {
 		},
 		"updates.check":   a.cmdUpdatesCheck,
 		"updates.install": a.cmdUpdatesInstall,
+		"fix.apply":       a.cmdFixApply,
 		"winget.list":     a.cmdWingetList,
 		"winget.upgrade":  a.cmdWingetUpgrade,
 		"power":           a.cmdPower,

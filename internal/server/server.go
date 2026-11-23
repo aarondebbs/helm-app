@@ -33,6 +33,8 @@ type Config struct {
 	// UpdatePubKey is the hex ed25519 release key (compiled in); GitHubAPI overrides the API base in tests.
 	UpdatePubKey string
 	GitHubAPI    string
+	// GoogleTokenURL overrides Google's token endpoint in tests.
+	GoogleTokenURL string
 }
 
 // Server is the Helm server.
@@ -46,6 +48,7 @@ type Server struct {
 	wg        sync.WaitGroup
 	sess      *sessions
 	hub       *Hub
+	oidc      oidcStore
 	upd       *updater
 	loginIP   *limiter
 	loginAcct *limiter
@@ -101,12 +104,14 @@ func (s *Server) Store() *Store { return s.st }
 // StartBackground launches the alert engine, scheduler and CVE downloader.
 func (s *Server) StartBackground() {
 	s.cve.start()
-	s.wg.Add(5)
+	s.wg.Add(7)
+	go s.loop(time.Hour, s.autoBackup)
 	go s.loop(6*time.Hour, s.autoUpdateCheck)
 	go s.loop(10*time.Minute, s.autoInventory)
 	go s.loop(30*time.Second, s.evalAlerts)
 	go s.loop(15*time.Second, s.runDueSchedules)
 	go s.loop(5*time.Minute, s.autoScan)
+	go s.loop(2*time.Minute, s.autoPatch)
 }
 
 func (s *Server) loop(every time.Duration, fn func()) {
@@ -163,6 +168,10 @@ func (s *Server) routes() http.Handler {
 
 	// public
 	mux.HandleFunc("POST /api/login", s.handleLogin)
+	mux.HandleFunc("GET /api/auth/google/start", s.handleGoogleStart)
+	mux.HandleFunc("GET /api/auth/google/callback", s.handleGoogleCallback)
+	mux.HandleFunc("GET /api/settings/google", s.authed(s.handleGoogleGet, false))
+	mux.HandleFunc("PUT /api/settings/google", s.authed(s.handleGooglePut, true))
 	mux.HandleFunc("POST /api/agent/enroll", s.handleEnroll)
 	mux.HandleFunc("GET /api/agent/update", s.handleAgentUpdate)
 	mux.HandleFunc("GET /ws/agent", s.handleAgentWS)
@@ -179,6 +188,16 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/auth/config", s.handleAuthConfig)
 	mux.HandleFunc("GET /api/update", s.authed(s.handleUpdateGet, false))
 	mux.HandleFunc("POST /api/update/check", s.authed(s.handleUpdateCheck, false))
+	mux.HandleFunc("GET /api/health", s.authed(s.handleHealth, false))
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /api/patch-window", s.authed(s.handlePatchGet, false))
+	mux.HandleFunc("PUT /api/patch-window", s.authed(s.handlePatchPut, true))
+	mux.HandleFunc("GET /api/backups", s.authed(s.handleBackupsList, false))
+	mux.HandleFunc("POST /api/backups", s.authed(s.handleBackupCreate, true))
+	mux.HandleFunc("POST /api/backups/upload", s.authed(s.handleBackupUpload, true))
+	mux.HandleFunc("POST /api/backups/restore", s.authed(s.handleBackupRestore, true))
+	mux.HandleFunc("GET /api/backups/{name}", s.authed(s.handleBackupDownload, false))
+	mux.HandleFunc("DELETE /api/backups/{name}", s.authed(s.handleBackupDelete, true))
 	mux.HandleFunc("POST /api/update/agents", s.authed(s.handleUpdateAgents, true))
 	mux.HandleFunc("POST /api/update/server", s.authed(s.handleUpdateServer, true))
 	mux.HandleFunc("GET /api/devices/{id}/inventory", s.authed(s.handleDeviceInventory, false))
