@@ -49,6 +49,7 @@ var jobTasks = map[string]string{
 	"updates.install": "Install updates", "winget.upgrade": "Update programs", "winget.install": "Install program",
 	"winget.uninstall": "Remove program", "pkg.install": "Install package", "fix.apply": "Apply fix",
 	"exec": "Run script", "power": "Power action", "agent.update": "Update Helm agent",
+	"net.scan": "Network scan", "agent.push": "Install Helm on a PC",
 }
 
 func jobTitle(name string, args json.RawMessage) string {

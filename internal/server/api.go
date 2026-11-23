@@ -37,12 +37,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	adm := s.st.admin()
-	if adm == nil {
+	if !s.st.HasAdmin() {
 		writeErr(w, http.StatusServiceUnavailable, "no administrator configured; run: helm-server init-admin")
 		return
 	}
-	pwOK := checkPassword(adm, req.User, req.Password)
+	adm := s.st.account(req.User)
+	if adm == nil { // unknown user: spend the same time as a real check
+		adm = &Admin{User: "\x00", Salt: make([]byte, 16), Hash: make([]byte, 32), Iter: 1}
+	}
+	pwOK := checkPassword(adm, req.User, req.Password) && adm.User != "\x00"
 	step, codeOK := adm.checkCode(req.Code)
 	if !pwOK || !codeOK {
 		s.loginIP.fail(ip)
@@ -52,18 +55,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	_ = s.st.update(func(d *data) error { d.Admin.LastStep = step; return nil })
+	_ = s.st.mutAccount(adm.User, func(a *Admin) { a.LastStep = step })
 	s.loginIP.reset(ip)
-	token, sess := s.sess.create(ip, r.UserAgent())
+	token, sess := s.sess.create(ip, r.UserAgent(), adm.User, adm.Role)
 	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: token, Path: "/", HttpOnly: true,
 		Secure: !s.cfg.Dev, SameSite: http.SameSiteStrictMode})
-	s.audit.add(AuditEntry{IP: ip, Action: "login"})
-	writeJSON(w, 200, map[string]any{"user": adm.User, "csrf": sess.CSRF})
+	s.audit.add(AuditEntry{IP: ip, Action: "login", Detail: adm.User})
+	writeJSON(w, 200, map[string]any{"user": adm.User, "role": roleName(adm.Role), "csrf": sess.CSRF})
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, sess *session) {
-	adm := s.st.admin()
-	writeJSON(w, 200, map[string]any{"user": adm.User, "csrf": sess.CSRF, "totp": adm.TOTPSecret != "", "stepUp": s.sess.stepUpValid(sess),
+	adm := s.st.account(sess.User)
+	if adm == nil {
+		writeErr(w, http.StatusUnauthorized, "not signed in")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"user": adm.User, "role": roleName(adm.Role), "csrf": sess.CSRF, "totp": adm.TOTPSecret != "", "stepUp": s.sess.stepUpValid(sess),
 		"stepUpUntil": sess.StepUpUntil})
 }
 
@@ -87,7 +94,7 @@ func (s *Server) handleStepUp(w http.ResponseWriter, r *http.Request, sess *sess
 	if !readJSON(w, r, &req) {
 		return
 	}
-	adm := s.st.admin()
+	adm := s.st.account(sess.User)
 	step, ok := adm.checkCode(req.Code)
 	if adm.TOTPSecret == "" { // two-step verification is off: confirm with the password instead
 		ok = checkPassword(adm, adm.User, req.Password)
@@ -99,7 +106,7 @@ func (s *Server) handleStepUp(w http.ResponseWriter, r *http.Request, sess *sess
 		writeErr(w, http.StatusUnauthorized, "invalid or already used code (wait for the next one)")
 		return
 	}
-	_ = s.st.update(func(d *data) error { d.Admin.LastStep = step; return nil })
+	_ = s.st.mutAccount(sess.User, func(a *Admin) { a.LastStep = step })
 	s.sess.grantStepUp(sess)
 	s.record(r, "stepup", "", "")
 	writeJSON(w, 200, map[string]any{"stepUpUntil": sess.StepUpUntil})
@@ -121,7 +128,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, se
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
-	adm := s.st.admin()
+	adm := s.st.account(sess.User)
 	if !checkPassword(adm, adm.User, req.Current) {
 		s.loginIP.fail(ip)
 		s.loginAcct.fail("admin")
@@ -129,7 +136,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, se
 		writeErr(w, http.StatusUnauthorized, "current password is wrong")
 		return
 	}
-	if err := s.st.SetPassword(req.New); err != nil {
+	if err := s.st.setPasswordFor(sess.User, req.New); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -154,7 +161,7 @@ func (s *Server) handleChangeUsername(w http.ResponseWriter, r *http.Request, se
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
-	adm := s.st.admin()
+	adm := s.st.account(sess.User)
 	if !checkPassword(adm, adm.User, req.Password) {
 		s.loginIP.fail(ip)
 		s.loginAcct.fail("admin")
@@ -162,9 +169,34 @@ func (s *Server) handleChangeUsername(w http.ResponseWriter, r *http.Request, se
 		writeErr(w, http.StatusUnauthorized, "current password is wrong")
 		return
 	}
-	_ = s.st.update(func(d *data) error { d.Admin.User = nu; return nil })
+	if err := s.st.update(func(d *data) error {
+		if nu != sess.User && d.findUser(nu) != nil {
+			return errors.New("that username is already taken")
+		}
+		if a := d.findUser(sess.User); a != nil {
+			a.User = nu
+		}
+		return nil
+	}); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.sess.mu.Lock()
+	for _, v := range s.sess.m {
+		if v.User == sess.User {
+			v.User = nu
+		}
+	}
+	s.sess.mu.Unlock()
 	s.record(r, "username_changed", "", nu)
 	writeJSON(w, 200, map[string]any{"user": nu})
+}
+
+func roleName(r string) string {
+	if r == "viewer" {
+		return "viewer"
+	}
+	return "admin"
 }
 
 func (s *Server) baseURL(r *http.Request) string {
@@ -422,8 +454,14 @@ func (s *Server) handleWake(w http.ResponseWriter, r *http.Request, sess *sessio
 			break
 		}
 	}
-	if relay == nil {
-		writeErr(w, 409, "no other online PC on the same network can send the wake packet")
+	if relay == nil { // no helper PC on that network: try from the server itself
+		n, err := wakeFromServer(target.Hello.MACs)
+		if err != nil {
+			writeErr(w, 409, "no other online PC on the same network, and the server could not send it: "+err.Error())
+			return
+		}
+		s.record(r, "wake", id, "from the server")
+		writeJSON(w, 200, map[string]any{"via": "the server (works only if it is on the same network as the PC)", "sent": n})
 		return
 	}
 	args, _ := json.Marshal(map[string]any{"macs": target.Hello.MACs})

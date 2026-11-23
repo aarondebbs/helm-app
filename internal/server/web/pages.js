@@ -535,6 +535,7 @@ async function viewAccount() {
         }, 'primary'))))),
     h('div', { class: 'stack' },
       panel('Two-step verification', 'Authenticator app', null, h('div', { class: 'stack' }, h('div', { id: 'totp-box' }, h('span', { class: 'spinner' })))),
+      S.role !== 'viewer' && S.user ? usersPanel() : null,
       panel('Session', null, null, h('div', { class: 'row spread' }, h('span', null, 'Signed in as ', h('b', null, S.user)), h('button', { onclick: logout }, 'Sign out')))));
 }
 
@@ -556,7 +557,8 @@ async function drawTotp() {
     clear(setup).append(h('div', { class: 'row', style: { alignItems: 'flex-start', gap: '20px' } }, svg,
       h('div', { class: 'stack', style: { flex: 1 } },
         h('p', { class: 'muted' }, '1. Scan this code with Google Authenticator, Microsoft Authenticator, Authy or 1Password.'),
-        h('p', { class: 'muted small-text' }, 'Cannot scan? Enter this key by hand: ', h('code', null, r.secret.replace(/(.{4})/g, '$1 ').trim())),
+        h('p', { class: 'muted small-text' }, 'Using a password manager (1Password, Bitwarden, Proton Pass, Apple Passwords)? Save this key as the one-time password for Helm: ', h('code', null, r.secret.replace(/(.{4})/g, '$1 ').trim())),
+        h('div', { class: 'row' }, copyButton(() => r.secret, 'Copy key'), copyButton(() => r.uri, 'Copy setup link'), h('a', { class: 'btn small', href: r.uri }, 'Open in authenticator app')),
         h('p', { class: 'muted' }, '2. Type the 6-digit code it shows to finish.'), code,
         actionButton('Confirm and activate', async () => { await api('POST', '/api/account/2fa/confirm', { code: code.value }); toast('Authenticator activated. Other sessions were signed out.', 'ok'); drawTotp(); }, 'primary'))));
   }, 'primary');
@@ -573,3 +575,108 @@ async function drawTotp() {
     setup));
 }
 
+
+
+// ---------- console users (owner manages; everyone can see the panel only if they are the owner) ----------
+function usersPanel() {
+  const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
+  const pan = panel('Console users', 'Admins can change anything. Viewers can look but not change.', null, box);
+  const keyCard = u => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `-3 -3 ${u.qr.size + 6} ${u.qr.size + 6}`); svg.setAttribute('class', 'qr'); svg.setAttribute('shape-rendering', 'crispEdges');
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); bg.setAttribute('x', -3); bg.setAttribute('y', -3); bg.setAttribute('width', u.qr.size + 6); bg.setAttribute('height', u.qr.size + 6); bg.setAttribute('fill', '#fff');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', u.qr.d); path.setAttribute('fill', '#000');
+    svg.append(bg, path);
+    return h('div', { class: 'row', style: { alignItems: 'flex-start', gap: '20px', padding: '12px', border: '1px solid var(--line2)' } }, svg,
+      h('div', { class: 'stack', style: { flex: 1 } }, h('b', null, 'Give ' + u.user + ' their authenticator key now. It is shown once.'),
+        h('code', null, u.secret.replace(/(.{4})/g, '$1 ').trim()),
+        h('div', { class: 'row' }, copyButton(() => u.secret, 'Copy key'), copyButton(() => u.uri, 'Copy setup link'))));
+  };
+  const load = async (card) => {
+    let r;
+    try { r = await api('GET', '/api/users'); } catch (e) { pan.remove(); return; }
+    if (!r.canManage) { clear(box).append(h('div', { class: 'muted' }, 'Only the owner can add or remove users.'), ...r.users.map(u => h('div', null, u.user + ' · ' + u.role))); return; }
+    const nu = h('input', { type: 'text', placeholder: 'Username', autocomplete: 'off' });
+    const np = h('input', { type: 'password', placeholder: 'Starting password', autocomplete: 'new-password' });
+    const nr = h('select', null, h('option', { value: 'admin' }, 'Admin'), h('option', { value: 'viewer' }, 'Viewer (read only)'));
+    const shown = h('div');
+    const rows = r.users.map(u => h('tr', null, h('td', null, u.user, u.owner ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, 'owner') : null),
+      h('td', null, u.role), h('td', null, u.totp ? 'on' : 'off'),
+      h('td', { class: 'right' }, u.owner ? '' : h('span', { class: 'row' },
+        actionButton('Reset sign-in', async () => {
+          const pw = prompt('New temporary password for ' + u.user + ' (12+ characters):');
+          if (!pw) return;
+          const k = await api('POST', '/api/users/reset', { user: u.user, password: pw });
+          load(keyCard(k));
+        }),
+        actionButton('Remove', async () => {
+          if (!await confirmDialog('Remove ' + u.user + '? They are signed out immediately.', 'Remove', true)) return;
+          await api('POST', '/api/users/remove', { user: u.user }); toast('User removed.', 'ok'); load();
+        }, 'danger')))));
+    clear(box).append(table(['User', 'Access', 'Authenticator', ''].map(x => ({ label: x })), rows),
+      h('div', { class: 'row' }, nu, np, nr, actionButton('Add user', async () => {
+        const k = await api('POST', '/api/users', { user: nu.value, password: np.value, role: nr.value });
+        nu.value = np.value = ''; load(keyCard(k));
+      }, 'primary')), shown);
+    if (card) shown.append(card);
+  };
+  load();
+  return pan;
+}
+
+
+// ---------- network scan and remote install ----------
+route(/^\/network$/, viewNetwork);
+async function viewNetwork() {
+  const out = h('div', { class: 'panel flush' }, h('div', { class: 'muted', style: { padding: '16px 18px' } }, 'Pick where to scan from, then scan. Helm lists the devices that answer and which ones already run Helm.'));
+  const bar = h('div', { class: 'row' }, h('span', { class: 'spinner' }));
+  shell('network', [pageHead('Network', 'Find PCs on a network and put Helm on them'), h('div', { class: 'panel' }, bar), out]);
+  let info;
+  try { info = await api('GET', '/api/network/sources'); } catch (e) { clear(bar).append('Could not load: ' + e.message); return; }
+  const src = h('select', null, info.sources.map(s => h('option', { value: s.id }, s.server ? s.name : s.name + ' (a PC on that network)')));
+  const cidr = h('select');
+  const fill = () => { const s = info.sources.find(x => x.id === src.value); clear(cidr).append((s ? s.cidrs : []).map(c => h('option', { value: c }, c))); };
+  src.addEventListener('change', fill); fill();
+  const windows = () => info.sources.filter(s => !s.server && s.os === 'windows');
+  const drawHosts = res => {
+    clear(out);
+    if (!res.hosts.length) { out.append(h('div', { class: 'muted', style: { padding: '16px 18px' } }, 'Nothing answered on ' + res.cidr + '.')); return; }
+    const rows = res.hosts.map(x => {
+      const kind = { windows: 'Windows PC', linux: 'Linux or Mac', other: 'Other device' }[x.kind];
+      const status = x.managed ? h('a', { href: '#/devices/' + x.managed }, 'Managed · ' + (x.managedName || '')) : h('span', { class: 'muted' }, 'Not managed');
+      let act = '';
+      if (!x.managed && x.kind === 'windows') act = h('button', { class: 'small', onclick: () => installDialog(x) }, 'Install Helm…');
+      else if (!x.managed && x.kind === 'linux') act = h('span', { class: 'muted small-text' }, 'Install from Add a PC');
+      return h('tr', null, h('td', { class: 'mono' }, x.ip), h('td', null, x.name || ''), h('td', { class: 'mono' }, x.mac || ''), h('td', null, kind), h('td', { class: 'mono muted' }, (x.ports || []).join(' ')), h('td', null, status), h('td', { class: 'right' }, act));
+    });
+    out.append(h('div', { class: 'muted', style: { padding: '10px 18px' } }, res.hosts.length + ' devices on ' + res.cidr + ' · ' + fmtTime(res.at)),
+      table(['Address', 'Name', 'MAC', 'Looks like', 'Open ports', 'Status', ''].map(x => ({ label: x })), rows));
+  };
+  const installDialog = async x => {
+    const wins = windows();
+    if (!wins.length) { toast('No online Windows PC with Helm is on that network to run the install.', 'bad'); return; }
+    const user = h('input', { type: 'text', placeholder: 'Administrator account of that PC', autocomplete: 'off' });
+    const pw = h('input', { type: 'password', placeholder: 'Its password', autocomplete: 'off' });
+    const relay = h('select', null, wins.map(s => h('option', { value: s.id }, s.name)));
+    const body = h('div', { class: 'stack' },
+      h('p', null, 'Install Helm on ', h('b', null, x.ip + (x.name ? ' (' + x.name + ')' : '')), '. The account and password are used once and are not saved.'),
+      h('label', { class: 'field' }, h('span', null, 'Do the install from'), relay), h('label', { class: 'field' }, h('span', null, 'User'), user), h('label', { class: 'field' }, h('span', null, 'Password'), pw),
+      x.winrm ? null : h('p', { class: 'muted small-text' }, 'This PC does not accept remote PowerShell yet (port 5985 is closed). On it, run once in an administrator PowerShell: Enable-PSRemoting -Force'),
+      h('p', { class: 'muted small-text' }, 'The new PC appears under Devices waiting for your approval.'));
+    const ok = await modal('Install Helm', body, [{ label: 'Cancel', value: false }, { label: 'Install', value: true, cls: 'primary' }]);
+    if (!ok) return;
+    try {
+      const r = await api('POST', '/api/network/install', { host: x.ip, user: user.value, password: pw.value, relay: relay.value });
+      toast('Installing. Watch progress on the Activity page.', 'ok');
+      location.hash = '#/activity';
+    } catch (e) { toast(e.message, 'bad'); }
+  };
+  const go = actionButton('Scan', async () => {
+    clear(out).append(h('div', { style: { padding: '16px 18px' } }, h('span', { class: 'spinner' }), ' Scanning ' + cidr.value + '. This takes up to a minute.'));
+    try { drawHosts(await api('POST', '/api/network/scan', { source: src.value, cidr: cidr.value })); }
+    catch (e) { clear(out).append(h('div', { style: { padding: '16px 18px' } }, 'Scan failed: ' + e.message)); }
+  }, 'primary');
+  clear(bar).append(h('label', null, 'Scan from ', src), h('label', null, 'Network ', cidr), go);
+  if (!info.sources.length) clear(bar).append(h('span', { class: 'muted' }, 'No online PC or server network to scan from.'));
+  if (info.last) drawHosts(info.last);
+}

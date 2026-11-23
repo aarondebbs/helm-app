@@ -634,3 +634,75 @@ func TestSelfUpdateDisabledWithoutKey(t *testing.T) {
 		t.Fatalf("self-update should be disabled without a key: %+v", j)
 	}
 }
+
+func TestUsersAndRoles(t *testing.T) {
+	e := newEnv(t)
+	e.login()
+	st, b := e.do("POST", "/api/users", map[string]string{"user": "vera", "password": "Another-Long-Pass-42", "role": "viewer"})
+	if st != 200 {
+		t.Fatalf("add user: %d %s", st, b)
+	}
+	var added struct{ Secret string }
+	_ = json.Unmarshal(b, &added)
+	if added.Secret == "" {
+		t.Fatal("new user should get an authenticator key")
+	}
+	if st, _ := e.do("POST", "/api/users", map[string]string{"user": "vera", "password": "Another-Long-Pass-42", "role": "admin"}); st != 409 {
+		t.Fatalf("duplicate user should conflict: %d", st)
+	}
+	// the viewer signs in with their own password and code
+	jar, _ := cookiejar.New(nil)
+	v := &env{dataDir: e.dataDir, t: t, srv: e.srv, ts: e.ts, client: &http.Client{Jar: jar, Timeout: 30 * time.Second}}
+	if st, _ := v.do("POST", "/api/login", map[string]string{"user": "vera", "password": "wrong-password-here", "code": server.TOTPNow(added.Secret, time.Now())}); st != 401 {
+		t.Fatalf("bad password should fail: %d", st)
+	}
+	st, b = v.do("POST", "/api/login", map[string]string{"user": "vera", "password": "Another-Long-Pass-42", "code": server.TOTPNow(added.Secret, time.Now())})
+	if st != 200 {
+		t.Fatalf("viewer login: %d %s", st, b)
+	}
+	var lr struct {
+		Csrf string
+		Role string
+	}
+	_ = json.Unmarshal(b, &lr)
+	v.csrf = lr.Csrf
+	if lr.Role != "viewer" {
+		t.Fatalf("role = %q", lr.Role)
+	}
+	if st, _ := v.do("GET", "/api/devices", nil); st != 200 {
+		t.Fatalf("viewer should read devices: %d", st)
+	}
+	if st, _ := v.do("POST", "/api/tokens", map[string]any{"label": "x"}); st != 403 {
+		t.Fatalf("viewer must not create tokens: %d", st)
+	}
+	if st, _ := v.do("GET", "/api/tokens", nil); st != 403 {
+		t.Fatalf("viewer must not list tokens: %d", st)
+	}
+	if st, _ := v.do("POST", "/api/users", map[string]string{"user": "mallory", "password": "Another-Long-Pass-42", "role": "admin"}); st != 403 {
+		t.Fatalf("viewer must not add users: %d", st)
+	}
+	// removing the user signs them out at once
+	if st, b := e.do("POST", "/api/users/remove", map[string]string{"user": "vera"}); st != 200 {
+		t.Fatalf("remove: %d %s", st, b)
+	}
+	if st, _ := v.do("GET", "/api/devices", nil); st != 401 {
+		t.Fatalf("removed user should be signed out: %d", st)
+	}
+	if st, _ := e.do("POST", "/api/users/remove", map[string]string{"user": "admin"}); st != 400 {
+		t.Fatalf("owner cannot remove themselves: %d", st)
+	}
+}
+
+func TestNetworkSources(t *testing.T) {
+	e := newEnv(t)
+	e.login()
+	if st, b := e.do("GET", "/api/network/sources", nil); st != 200 || !strings.Contains(string(b), `"sources"`) {
+		t.Fatalf("sources: %d %s", st, b)
+	}
+	if st, _ := e.do("POST", "/api/network/scan", map[string]string{"source": "server", "cidr": "8.8.8.0/24"}); st != 400 {
+		t.Fatalf("public networks must be refused: %d", st)
+	}
+	if st, _ := e.do("POST", "/api/network/install", map[string]string{"host": "8.8.8.8", "user": "a", "password": "b", "relay": "x"}); st != 400 {
+		t.Fatalf("public host must be refused: %d", st)
+	}
+}

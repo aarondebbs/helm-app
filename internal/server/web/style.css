@@ -1,7 +1,7 @@
 /* Helm console. A working tool, not a brochure: flat surfaces, hairline structure, tabular numbers.
    One idea carries the identity: a security score is a square cell. The same cell is used in tables,
    the quick-view panel and the dashboard fleet map, where offline machines are hatched. */
-@font-face { font-family: "Source Sans 3"; src: url("SourceSans3.woff2") format("woff2"); font-weight: 200 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("Inter.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
 :root {
   color-scheme: light;
   --bg: #eef1f0; --panel: #ffffff; --panel2: #e8edeb; --hover: #f4f7f6; --head: #f6f8f7;
@@ -41,7 +41,7 @@ html[data-theme="dark"] {
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.45 "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif; font-feature-settings: "lnum", "kern"; -webkit-font-smoothing: antialiased; }
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", Roboto, sans-serif; letter-spacing: -0.006em; font-feature-settings: "kern", "calt", "cv11"; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 2px; }
 h1, h2, h3, h4 { margin: 0 0 .5em; font-weight: 600; line-height: 1.2; }
@@ -317,3 +317,7 @@ html[data-theme="dark"] .toast { background: #1d2b29; }
 @media (prefers-reduced-motion: reduce) { .bar.indet > i { animation: none; width: 100%; opacity: .5; } }
 .stages { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
 tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--panel2); }
+
+/* installed app: respect the notch and home bar */
+@media (display-mode: standalone) { body { padding-bottom: env(safe-area-inset-bottom); } .topbar { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); } }
+html { -webkit-text-size-adjust: 100%; } button, a { -webkit-tap-highlight-color: transparent; }

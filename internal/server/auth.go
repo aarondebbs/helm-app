@@ -137,6 +137,8 @@ type session struct {
 	Created     time.Time
 	LastSeen    time.Time
 	StepUpUntil time.Time
+	User        string
+	Role        string
 	IP          string
 	UA          string
 }
@@ -173,10 +175,10 @@ func (s *sessions) gc() {
 	}
 }
 
-func (s *sessions) create(ip, ua string) (token string, sess *session) {
+func (s *sessions) create(ip, ua, user, role string) (token string, sess *session) {
 	token = randB64(32)
 	now := time.Now()
-	sess = &session{CSRF: randB64(24), Created: now, LastSeen: now, StepUpUntil: now.Add(stepUpWindow), IP: ip, UA: ua}
+	sess = &session{CSRF: randB64(24), Created: now, LastSeen: now, StepUpUntil: now.Add(stepUpWindow), User: user, Role: role, IP: ip, UA: ua}
 	s.mu.Lock()
 	s.m[sha256hex(token)] = sess
 	s.mu.Unlock()
@@ -219,7 +221,7 @@ func (s *sessions) destroyAll() {
 func (s *sessions) destroyAllExcept(keep *session) {
 	s.mu.Lock()
 	for k, v := range s.m {
-		if v != keep {
+		if v != keep && v.User == keep.User {
 			delete(s.m, k)
 		}
 	}
@@ -311,4 +313,15 @@ func (l *limiter) reset(key string) {
 func TOTPNow(secret string, t time.Time) string {
 	c, _ := totpCode(secret, t.Unix()/30)
 	return c
+}
+
+// destroyUser signs a user out everywhere.
+func (s *sessions) destroyUser(user string) {
+	s.mu.Lock()
+	for k, v := range s.m {
+		if v.User == user {
+			delete(s.m, k)
+		}
+	}
+	s.mu.Unlock()
 }

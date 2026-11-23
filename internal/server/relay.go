@@ -33,6 +33,10 @@ func (s *Server) handleUIChannel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "not signed in")
 		return
 	}
+	if sess.Role == "viewer" {
+		writeErr(w, 403, "your account is read-only")
+		return
+	}
 	q := r.URL.Query()
 	if r.Header.Get("Origin") == "" || !sameOrigin(r) || !ctEq(q.Get("csrf"), sess.CSRF) {
 		writeErr(w, 403, "bad origin or CSRF token")

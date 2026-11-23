@@ -231,7 +231,7 @@ func (s *Server) handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 		ssoFail(w, r, "That Google account is not allowed to sign in.")
 		return
 	}
-	token, sess := s.sess.create(ip, r.UserAgent())
+	token, sess := s.sess.create(ip, r.UserAgent(), s.st.admin().User, "")
 	// Google proved who you are, but sensitive actions still ask for the authenticator code (no step-up window at sign-in).
 	s.sess.mu.Lock()
 	sess.StepUpUntil = time.Time{}

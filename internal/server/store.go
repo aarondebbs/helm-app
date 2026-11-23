@@ -19,12 +19,14 @@ import (
 
 // Admin is the single administrator account.
 type Admin struct {
-	User       string `json:"user"`
-	Salt       []byte `json:"salt"`
-	Hash       []byte `json:"hash"`
-	Iter       int    `json:"iter"`
-	TOTPSecret string `json:"totpSecret"` // base32
-	LastStep   int64  `json:"lastStep"`   // last accepted TOTP time step (replay protection)
+	User       string    `json:"user"`
+	Salt       []byte    `json:"salt"`
+	Hash       []byte    `json:"hash"`
+	Iter       int       `json:"iter"`
+	TOTPSecret string    `json:"totpSecret"`     // base32
+	LastStep   int64     `json:"lastStep"`       // last accepted TOTP time step (replay protection)
+	Role       string    `json:"role,omitempty"` // "" or "admin": full access; "viewer": read only
+	Created    time.Time `json:"created,omitempty"`
 }
 
 // Device is a managed PC.
@@ -56,7 +58,8 @@ type Token struct {
 }
 
 type data struct {
-	Admin   *Admin             `json:"admin,omitempty"`
+	Admin   *Admin             `json:"admin,omitempty"` // the owner
+	Users   []*Admin           `json:"users,omitempty"` // further console users
 	Devices map[string]*Device `json:"devices"`
 	Tokens  map[string]*Token  `json:"tokens"`
 }
@@ -344,4 +347,90 @@ func (a *Admin) checkCode(code string) (int64, bool) {
 		return a.LastStep, true
 	}
 	return verifyTOTP(a.TOTPSecret, code, time.Now(), a.LastStep)
+}
+
+// account returns a copy of the named console user (the owner or an added user), or nil.
+func (s *Store) account(user string) *Admin {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if a := s.d.findUser(user); a != nil {
+		c := *a
+		return &c
+	}
+	return nil
+}
+
+func (d *data) findUser(user string) *Admin {
+	if d.Admin != nil && d.Admin.User == user {
+		return d.Admin
+	}
+	for _, u := range d.Users {
+		if u.User == user {
+			return u
+		}
+	}
+	return nil
+}
+
+// mutAccount changes one console user under the write lock and saves.
+func (s *Store) mutAccount(user string, fn func(a *Admin)) error {
+	return s.update(func(d *data) error {
+		a := d.findUser(user)
+		if a == nil {
+			return errors.New("no such user")
+		}
+		fn(a)
+		return nil
+	})
+}
+
+// listUsers returns every console user, owner first.
+func (s *Store) listUsers() []Admin {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []Admin
+	if s.d.Admin != nil {
+		out = append(out, *s.d.Admin)
+	}
+	for _, u := range s.d.Users {
+		out = append(out, *u)
+	}
+	return out
+}
+
+// addUser creates a console user with a password and a fresh authenticator secret.
+func (s *Store) addUser(user, password, role string) (string, error) {
+	salt, hash, iter, err := HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	secret := NewTOTPSecret()
+	err = s.update(func(d *data) error {
+		if d.findUser(user) != nil {
+			return errors.New("that username is already taken")
+		}
+		d.Users = append(d.Users, &Admin{User: user, Salt: salt, Hash: hash, Iter: iter, TOTPSecret: secret, Role: role, Created: time.Now().UTC()})
+		return nil
+	})
+	return secret, err
+}
+
+func (s *Store) removeUser(user string) error {
+	return s.update(func(d *data) error {
+		for i, u := range d.Users {
+			if u.User == user {
+				d.Users = append(d.Users[:i], d.Users[i+1:]...)
+				return nil
+			}
+		}
+		return errors.New("no such user")
+	})
+}
+
+func (s *Store) setPasswordFor(user, password string) error {
+	salt, hash, iter, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	return s.mutAccount(user, func(a *Admin) { a.Salt, a.Hash, a.Iter = salt, hash, iter })
 }

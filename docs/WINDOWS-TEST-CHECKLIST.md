@@ -82,3 +82,12 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] Half size and Low quality are still available and clearly faster on a slow link.
 - [ ] Leave a session open for 30 minutes at 60 fps: no memory growth in `helm-agent.exe` (Task Manager) and no stutter.
 - [ ] Switching monitors, changing resolution and the sign-in screen (Ctrl+Alt+Del) still work.
+
+## 0.8.0
+
+- [ ] Wake-on-LAN: shut down a PC, press *Wake it* from a PC on the same network; then with no helper PC online (server on the same network).
+- [ ] Network scan from a PC and from the server; the hosts match your router's list.
+- [ ] *Install Helm…* on a second Windows PC with remote PowerShell enabled; the PC appears for approval. Try a wrong password (clear error, nothing stored).
+- [ ] Add a viewer user; confirm they cannot change anything, open a remote screen, or see tokens.
+- [ ] Save the authenticator key in a password manager and sign in with its code.
+- [ ] Install the console as an app on iPhone and Android; open it offline.

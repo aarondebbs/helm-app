@@ -212,6 +212,7 @@ const ICON = {
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   box: 'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8',
   zap: 'M13 2L4 14h7l-1 8 9-12h-7z',
+  net: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 0c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3zM3 12h18',
   bell: 'M6 8a6 6 0 0112 0c0 7 3 8 3 8H3s3-1 3-8M10 21a2 2 0 004 0',
   video: 'M3 6h12v12H3zM15 10l6-3v10l-6-3',
   file: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
@@ -381,7 +382,7 @@ const LOGO = () => {
 const NAV = [
   ['Overview', [['#/', 'Dashboard', 'dash', 'dashboard'], ['#/devices', 'Devices', 'devices', 'devices']]],
   ['Protect', [['#/security', 'Security', 'shield', 'security'], ['#/alerts', 'Alerts', 'bell', 'alerts']]],
-  ['Manage', [['#/software', 'Software', 'box', 'software'], ['#/automation', 'Automation', 'zap', 'automation'], ['#/sessions', 'Sessions', 'video', 'sessions']]],
+  ['Manage', [['#/software', 'Software', 'box', 'software'], ['#/automation', 'Automation', 'zap', 'automation'], ['#/sessions', 'Sessions', 'video', 'sessions'], ['#/network', 'Network', 'net', 'network']]],
   ['Admin', [['#/reports', 'Reports', 'file', 'reports'], ['#/enroll', 'Add a PC', 'plus', 'enroll'], ['#/activity', 'Activity log', 'list', 'activity'], ['#/settings', 'Settings', 'gear', 'settings']]],
 ];
 
@@ -478,7 +479,7 @@ function showLogin(msg) {
     try {
       const { res, data } = await rawFetch('POST', '/api/login', { user: user.value, password: pw.value, code: code.value });
       if (!res.ok) throw new Error((data && data.error) || 'Sign-in failed');
-      S.csrf = data.csrf; S.user = data.user; boot2();
+      S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; document.documentElement.dataset.role = S.role; boot2();
     } catch (ex) { err.textContent = ex.message; err.classList.remove('hidden'); code.value = ''; }
     finally { btn.disabled = false; }
   } },
@@ -524,7 +525,7 @@ function navigate() {
 async function boot() {
   const { res, data } = await rawFetch('GET', '/api/me');
   if (!res.ok) { showLogin(); return; }
-  S.csrf = data.csrf; S.user = data.user; boot2();
+  S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; document.documentElement.dataset.role = S.role; boot2();
 }
 function boot2() {
   navigate();

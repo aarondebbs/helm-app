@@ -184,6 +184,13 @@ func (s *Server) routes() http.Handler {
 
 	// authenticated
 	mux.HandleFunc("GET /api/me", s.authed(s.handleMe, false))
+	mux.HandleFunc("GET /api/network/sources", s.authed(s.handleNetSources, false))
+	mux.HandleFunc("POST /api/network/scan", s.authed(s.handleNetScan, true))
+	mux.HandleFunc("POST /api/network/install", s.authed(s.handleNetInstall, true))
+	mux.HandleFunc("GET /api/users", s.authed(s.handleUsers, false))
+	mux.HandleFunc("POST /api/users", s.authed(s.handleUserAdd, true))
+	mux.HandleFunc("POST /api/users/remove", s.authed(s.handleUserRemove, true))
+	mux.HandleFunc("POST /api/users/reset", s.authed(s.handleUserReset, true))
 	mux.HandleFunc("POST /api/logout", s.authed(s.handleLogout, true))
 	mux.HandleFunc("POST /api/account/2fa/begin", s.authed(s.handle2faBegin, true))
 	mux.HandleFunc("POST /api/account/2fa/confirm", s.authed(s.handle2faConfirm, true))
@@ -266,6 +273,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/deploy", s.authed(s.handleDeploy, true))
 	mux.HandleFunc("GET /ws/ui", s.handleUIChannel)
 
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	sub, _ := fs.Sub(webFS, "web")
 	mux.Handle("GET /", http.FileServerFS(sub))
 
@@ -362,6 +370,10 @@ func (s *Server) authed(fn authedFunc, mutating bool) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, "not signed in")
 			return
 		}
+		if sess.Role == "viewer" && (viewerBlocked(r.URL.Path) || mutating && !viewerMay(r.URL.Path)) {
+			writeErr(w, http.StatusForbidden, "your account is read-only")
+			return
+		}
 		if mutating {
 			if !sameOrigin(r) || !ctEq(r.Header.Get("X-CSRF-Token"), sess.CSRF) {
 				writeErr(w, http.StatusForbidden, "bad CSRF token")
@@ -370,6 +382,21 @@ func (s *Server) authed(fn authedFunc, mutating bool) http.HandlerFunc {
 		}
 		fn(w, r, sess)
 	}
+}
+
+// viewerBlocked lists reads that hand out secrets or installers.
+func viewerBlocked(path string) bool {
+	for _, p := range []string{"/api/backups/", "/api/tokens", "/api/settings", "/api/agent/package/", "/api/users"} {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return strings.HasSuffix(path, "/download")
+}
+
+// viewerMay lists the few changes a read-only user can still make: sign out and manage their own sign-in.
+func viewerMay(path string) bool {
+	return path == "/api/logout" || path == "/api/stepup" || strings.HasPrefix(path, "/api/account/")
 }
 
 func (s *Server) sessionFor(r *http.Request) *session {

@@ -208,3 +208,23 @@ See `docs/WINDOWS-TEST-CHECKLIST.md` – the Windows-specific code could not be 
 ## Activity
 
 The Activity page shows a **Running now** panel (progress bar, percentage and current stage for each task, refreshed every 2 seconds), the last 7 days of finished tasks with their key stages, and the audit log. Percentages are reported for package/installer downloads, Windows updates and security scans; other tasks show stages only.
+
+## Console users
+
+The first administrator is the **owner**. In *My account* the owner can add more users: an **admin** (full access) or a **viewer** (can look, but cannot change anything, open a remote screen or terminal, or see enrollment tokens, settings and backups). Each user has their own password and authenticator. Adding a user shows their authenticator key once; removing a user signs them out immediately. Google sign-in still maps to the owner account.
+
+## Authenticator in a password manager
+
+When you turn on two-step verification, Helm shows the QR code, the **key** and a **setup link**. To keep the code in 1Password, Bitwarden, Proton Pass or Apple Passwords, copy the key (or the link) into the one-time-password field of a Helm login item.
+
+## Wake-on-LAN
+
+*Wake it* on an offline PC sends the magic packet from another online PC on the same network; if there is none, the server sends it itself (this only works when the server is on that network). The PC needs Wake-on-LAN enabled in its BIOS and network adapter, and Helm must have seen its MAC address while it was online.
+
+## Network scan and remote install
+
+*Network* scans a /24 (up to /22) from any online PC or from the server and lists the devices that answer, with name, MAC, open ports and whether they already run Helm. For a Windows PC you can choose **Install Helm…**: a helper Windows PC on the same network connects over PowerShell remoting with an administrator account you type (used once, never stored), downloads the MSI and installs it. The new PC then waits for your approval under Devices. This needs remote PowerShell on the target (`Enable-PSRemoting -Force` in an administrator PowerShell); for a PC in a workgroup that uses a local account, Windows may also need `LocalAccountTokenFilterPolicy=1`. Linux and macOS PCs are installed from *Add a PC*.
+
+## Install as an app (PWA)
+
+Open the console in Safari, Chrome or Edge and choose *Add to Home Screen* / *Install*. The app shell opens offline; data always comes from the server.

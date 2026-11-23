@@ -94,6 +94,8 @@ func (a *Agent) baseHandlers() map[string]handlerFn {
 		"power":           a.cmdPower,
 		"msg":             a.cmdMsg,
 		"wol":             a.cmdWOL,
+		"net.scan":        a.cmdNetScan,
+		"agent.push":      a.cmdPushInstall,
 		"exec":            a.cmdExec,
 		"rdp.status": func(ctx context.Context, c *cmdCtx) (any, error) {
 			return a.psJSON(ctx, scriptRDPStatus, nil, time.Minute)

@@ -46,6 +46,8 @@ var commands = map[string]cmdSpec{
 	"agent.update":    {false, 10 * time.Minute},
 	"agent.uninstall": {true, 60 * time.Second},
 	"wol":             {false, 30 * time.Second},
+	"net.scan":        {false, 5 * time.Minute},
+	"agent.push":      {true, 25 * time.Minute},
 	// scanning and deployment
 	"scan.software":    {false, 3 * time.Minute},
 	"scan.config":      {false, 5 * time.Minute},
@@ -361,5 +363,14 @@ func (h *Hub) openChannel(deviceID, kind string, args any, wait time.Duration) (
 		return nil, errors.New(msg)
 	case <-time.After(wait):
 		return nil, errors.New("timed out waiting for the PC (no response or consent prompt unanswered)")
+	}
+}
+
+// scrubArgs removes the arguments from a running job once they have been sent (they may hold a password).
+func (h *Hub) scrubArgs(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if j := h.jobs[id]; j != nil {
+		j.Args = json.RawMessage(`{"redacted":true}`)
 	}
 }
