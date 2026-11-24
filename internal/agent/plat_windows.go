@@ -579,3 +579,11 @@ func launchHelper(ctx context.Context, hl helperLaunch) (func(), error) {
 	go func() { <-ctx.Done(); stop() }()
 	return stop, nil
 }
+
+func publicDirOS() string {
+	pd := os.Getenv("ProgramData")
+	if pd == "" {
+		pd = `C:\ProgramData`
+	}
+	return filepath.Join(pd, "HelmPublic")
+}

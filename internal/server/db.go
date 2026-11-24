@@ -47,6 +47,7 @@ const (
 	RuleNewDevice = "new_device"
 	RuleSecurity  = "security"
 	RulePatches   = "patches"
+	RuleSupport   = "support_request"
 )
 
 var ruleInfo = []struct{ ID, Title, Desc string }{
@@ -55,6 +56,7 @@ var ruleInfo = []struct{ ID, Title, Desc string }{
 	{RuleNewDevice, "New PC waiting for approval", "A PC enrolled and is waiting for you to approve it."},
 	{RuleSecurity, "Critical or high security findings", "A scan found critical/high vulnerabilities or configuration problems."},
 	{RulePatches, "Security updates missing", "A scan found missing critical or important Windows updates."},
+	{RuleSupport, "Support requested", "The person at a PC pressed Request support in the Helm tray menu."},
 }
 
 func defaultSettings() Settings {

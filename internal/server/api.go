@@ -496,11 +496,17 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, sess *sess
 
 func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, sess *session) {
 	var req struct {
-		Label   string `json:"label"`
-		Hours   int    `json:"hours"`
-		MaxUses int    `json:"maxUses"`
+		Label   string   `json:"label"`
+		Hours   int      `json:"hours"`
+		MaxUses int      `json:"maxUses"`
+		Profile *Profile `json:"profile"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	pf, perr := cleanProfile(req.Profile)
+	if perr != nil {
+		writeErr(w, 400, perr.Error())
 		return
 	}
 	if req.Hours <= 0 || req.Hours > 24*90 {
@@ -514,7 +520,7 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, sess 
 		writeErr(w, 400, "label too long")
 		return
 	}
-	plain, t, err := s.st.CreateToken(req.Label, time.Duration(req.Hours)*time.Hour, req.MaxUses)
+	plain, t, err := s.st.CreateTokenP(req.Label, time.Duration(req.Hours)*time.Hour, req.MaxUses, pf)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -629,6 +635,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 	}()
+	_ = a.send(s.configFrame(r, dev))
 	if dev.Approved {
 		_ = a.send(proto.Frame{T: proto.TApproved})
 	}
@@ -674,6 +681,8 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 				}
 				s.hub.progress(f.ID, f.Msg, pct)
 			}
+		case proto.TSupport:
+			s.supportRequest(dev.ID, f.Msg, ip)
 		case proto.TOpenFail:
 			s.hub.refuse(f.SID, f.Err)
 		}

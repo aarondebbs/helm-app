@@ -58,6 +58,9 @@ type Agent struct {
 	conn *ws.Conn
 	cr   *creds
 
+	stMu sync.Mutex
+	tray TrayStatus
+
 	cmdSem   chan struct{}
 	updMu    sync.Mutex // serialises Windows Update / winget / self-update operations
 	screenMu sync.Mutex // one screen session at a time
@@ -143,6 +146,9 @@ func (a *Agent) httpClient() *http.Client {
 // Run connects to the server and serves commands until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) {
 	a.log.Printf("helm agent %s starting (server %s)", a.cfg.Version, a.cfg.Server)
+	go a.statusLoop(ctx)
+	go a.serveControl(ctx)
+	go a.trayKeeper(ctx)
 	backoff := 3 * time.Second
 	for ctx.Err() == nil {
 		started := time.Now()
@@ -150,6 +156,7 @@ func (a *Agent) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		a.setState("offline")
 		a.log.Printf("session ended: %v", err)
 		var he *ws.HandshakeError
 		switch {
@@ -220,6 +227,7 @@ func (a *Agent) session(ctx context.Context) error {
 	if a.cr != nil && a.cr.Server != a.cfg.Server && a.cfg.EnrollToken != "" {
 		a.cr = nil // reinstalled against a different server
 	}
+	a.setState("connecting")
 	if a.cr == nil {
 		if err := a.enroll(ctx); err != nil {
 			return err
@@ -249,6 +257,7 @@ func (a *Agent) session(ctx context.Context) error {
 		a.mu.Unlock()
 	}()
 	a.log.Printf("connected to server as %s", a.cr.DeviceID)
+	a.setState("pending") // becomes "connected" when the server says the PC is approved
 
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -277,8 +286,14 @@ func (a *Agent) session(ctx context.Context) error {
 			continue
 		}
 		switch f.T {
+		case proto.TConfig:
+			var cfg proto.Config
+			if json.Unmarshal(f.Data, &cfg) == nil {
+				a.setConfig(cfg)
+			}
 		case proto.TApproved:
 			a.log.Printf("approved by administrator")
+			a.setState("connected")
 		case proto.TRevoked:
 			a.log.Printf("revoked by administrator")
 		case proto.TCmd:

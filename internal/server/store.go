@@ -43,6 +43,7 @@ type Device struct {
 	Group      string       `json:"group,omitempty"`
 	Tags       []string     `json:"tags,omitempty"`
 	Hello      *proto.Hello `json:"hello,omitempty"`
+	Profile    *Profile     `json:"profile,omitempty"` // deploy profile of the token it enrolled with
 }
 
 // Token is an enrollment token.
@@ -55,6 +56,19 @@ type Token struct {
 	MaxUses   int       `json:"maxUses"`
 	Uses      int       `json:"uses"`
 	Revoked   bool      `json:"revoked"`
+	Profile   *Profile  `json:"profile,omitempty"`
+}
+
+// Profile is what the person deploying chose in the portal before downloading the installer.
+type Profile struct {
+	Group        string   `json:"group,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	NamePrefix   string   `json:"namePrefix,omitempty"`
+	AutoApprove  bool     `json:"autoApprove,omitempty"` // otherwise the PC waits for approval in the portal
+	Org          string   `json:"org,omitempty"`
+	SupportText  string   `json:"supportText,omitempty"`
+	HideTray     bool     `json:"hideTray,omitempty"`
+	NoSupportBtn bool     `json:"noSupportBtn,omitempty"`
 }
 
 type data struct {
@@ -240,9 +254,13 @@ func ctEq(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byt
 
 // CreateToken makes a new enrollment token and returns the plaintext (shown once).
 func (s *Store) CreateToken(label string, ttl time.Duration, maxUses int) (string, Token, error) {
+	return s.CreateTokenP(label, ttl, maxUses, nil)
+}
+
+func (s *Store) CreateTokenP(label string, ttl time.Duration, maxUses int, pf *Profile) (string, Token, error) {
 	plain := "hlm_" + randHex(20)
 	t := Token{ID: randHex(6), Label: label, Hash: sha256hex(plain), CreatedAt: time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(ttl), MaxUses: maxUses}
+		ExpiresAt: time.Now().UTC().Add(ttl), MaxUses: maxUses, Profile: pf}
 	err := s.update(func(d *data) error { d.Tokens[t.ID] = &t; return nil })
 	return plain, t, err
 }
@@ -267,8 +285,17 @@ func (s *Store) Enroll(token string, h proto.Hello, ip string) (id, secret strin
 		}
 		tk.Uses++
 		hh := h
-		d.Devices[id] = &Device{ID: id, Name: h.Hostname, SecretHash: sha256hex(secret),
+		dev := &Device{ID: id, Name: h.Hostname, SecretHash: sha256hex(secret),
 			CreatedAt: now.UTC(), LastSeen: now.UTC(), LastIP: ip, Via: tk.Label, Hello: &hh}
+		if pf := tk.Profile; pf != nil {
+			c := *pf
+			dev.Profile = &c
+			dev.Group, dev.Tags, dev.Approved = pf.Group, append([]string(nil), pf.Tags...), pf.AutoApprove
+			if pf.NamePrefix != "" {
+				dev.Name = pf.NamePrefix + h.Hostname
+			}
+		}
+		d.Devices[id] = dev
 		return nil
 	})
 	return

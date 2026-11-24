@@ -70,6 +70,21 @@ func (s *Server) alertConditions(set Settings) []cond {
 	devs := s.st.devices()
 	online := s.hub.onlineIDs()
 	now := time.Now()
+	supportReqs.Range(func(k, v any) bool {
+		e := v.(supportEntry)
+		if now.Sub(e.at) > 24*time.Hour {
+			supportReqs.Delete(k)
+			return true
+		}
+		name := k.(string)
+		for _, d := range devs {
+			if d.ID == k.(string) {
+				name = d.Name
+			}
+		}
+		out = append(out, cond{RuleSupport, "support:" + k.(string), k.(string), name, "warning", name + " asked for support", firstLine(e.msg+" ("+humanAgo(now.Sub(e.at))+" ago)", 300)})
+		return true
+	})
 	for _, d := range devs {
 		if !d.Approved {
 			out = append(out, cond{RuleNewDevice, "new:" + d.ID, d.ID, d.Name, "info", "New PC waiting for approval: " + d.Name,

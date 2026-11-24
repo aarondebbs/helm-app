@@ -745,6 +745,21 @@ function viewEnroll() {
   const hours = h('select', null, [[1, '1 hour'], [24, '24 hours'], [72, '3 days'], [168, '7 days'], [720, '30 days']].map(([v, l]) => h('option', { value: v, selected: v === 24 }, l)));
   const uses = h('select', null, [[1, '1 PC (single use)'], [5, '5 PCs'], [25, '25 PCs'], [0, 'Unlimited']].map(([v, l]) => h('option', { value: v }, l)));
   const consent = h('select', null, [['prompt_if_present', 'Ask the person at the PC if someone is using it (recommended)'], ['always_prompt', 'Always ask before a remote screen session'], ['unattended', 'Never ask (unattended access)']].map(([v, l]) => h('option', { value: v }, l)));
+  // Deploy profile: what the installer should set up on the PC before anyone installs it.
+  const pGroup = h('input', { type: 'text', placeholder: 'e.g. Reception', maxLength: 40 }), pTags = h('input', { type: 'text', placeholder: 'comma separated, e.g. office, laptop' });
+  const pPrefix = h('input', { type: 'text', placeholder: 'e.g. HQ-', maxLength: 20 }), pOrg = h('input', { type: 'text', placeholder: 'Shown in the tray menu', maxLength: 60 });
+  const pSupport = h('input', { type: 'text', placeholder: 'e.g. IT desk: it@example.com, ext 4400', maxLength: 200 });
+  const pApprove = h('select', null, [['manual', 'I approve each PC in the portal (recommended)'], ['auto', 'Approve automatically when it enrolls']].map(([v, l]) => h('option', { value: v }, l)));
+  const pTray = h('input', { type: 'checkbox', checked: true }), pBtn = h('input', { type: 'checkbox', checked: true });
+  const profile = () => ({ group: pGroup.value.trim(), tags: pTags.value.split(',').map(x => x.trim()).filter(Boolean), namePrefix: pPrefix.value.trim(), autoApprove: pApprove.value === 'auto',
+    org: pOrg.value.trim(), supportText: pSupport.value.trim(), hideTray: !pTray.checked, noSupportBtn: !pBtn.checked });
+  const custom = h('details', { class: 'notice' }, h('summary', null, h('b', null, 'Customize the installer'), h('span', { class: 'muted' }, '  group, name, approval and the tray menu on the PC')),
+    h('div', { class: 'stack', style: { marginTop: '12px' } },
+      h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Put the PC in group'), pGroup), h('label', { class: 'field' }, h('span', null, 'Tags'), pTags), h('label', { class: 'field' }, h('span', null, 'Name prefix'), pPrefix)),
+      h('label', { class: 'field' }, h('span', null, 'Approval'), pApprove),
+      h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Organisation name'), pOrg), h('label', { class: 'field' }, h('span', null, 'Support contact'), pSupport)),
+      h('label', { class: 'row' }, pTray, 'Show the Helm icon in the taskbar on the PC'),
+      h('label', { class: 'row' }, pBtn, 'Let the person at the PC press “Request support”')));
   let info = { baseUrl: location.origin, msi: false, releases: {} };
 
   // Download a personalised installer (token baked in) for one platform.
@@ -760,7 +775,7 @@ function viewEnroll() {
   let osTab = store.get('enrollos', 'windows');
 
   const create = actionButton('Create install command', async () => {
-    const r = await api('POST', '/api/tokens', { label: label.value.trim(), hours: Number(hours.value), maxUses: Number(uses.value) });
+    const r = await api('POST', '/api/tokens', { label: label.value.trim(), hours: Number(hours.value), maxUses: Number(uses.value), profile: profile() });
     const base = info.baseUrl, has = n => (info.dist || []).includes(n);
     const props = `SERVER=${base} TOKEN=${r.token}` + (consent.value !== 'prompt_if_present' ? ` CONSENT=${consent.value}` : '');
     const flags = `--server ${base} --token ${r.token}` + (consent.value !== 'prompt_if_present' ? ` --consent ${consent.value}` : '');
@@ -813,7 +828,7 @@ function viewEnroll() {
     h('div', { class: 'panel stack' },
       h('p', { style: { margin: 0 } }, 'Each PC enrolls with a token. Tokens expire and can be single-use. The token is removed from the PC after it has enrolled.'),
       h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Label'), label), h('label', { class: 'field' }, h('span', null, 'Valid for'), hours), h('label', { class: 'field' }, h('span', null, 'Can enroll'), uses)),
-      h('label', { class: 'field' }, h('span', null, 'Remote screen consent on that PC'), consent),
+      h('label', { class: 'field' }, h('span', null, 'Remote screen consent on that PC'), consent), custom,
       h('div', null, create)),
     out, h('div', { class: 'panel flush', style: { marginTop: '16px' } }, h('div', { class: 'phead' }, h('h3', null, 'Tokens')), list)]);
   api('GET', '/api/info').then(i => { info = i; }).catch(() => { });

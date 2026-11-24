@@ -706,3 +706,62 @@ func TestNetworkSources(t *testing.T) {
 		t.Fatalf("public host must be refused: %d", st)
 	}
 }
+
+func TestDeployProfileAndSupport(t *testing.T) {
+	e := newEnv(t)
+	e.login()
+	// the person deploying customises the installer in the portal
+	st, b := e.do("POST", "/api/tokens", map[string]any{"label": "hq", "hours": 1, "maxUses": 1, "profile": map[string]any{
+		"group": "Reception", "tags": []string{"office", "laptop"}, "namePrefix": "HQ-", "autoApprove": true, "org": "Acme Ltd", "supportText": "IT desk: it@acme.test"}})
+	if st != 200 {
+		t.Fatalf("create token: %d %s", st, b)
+	}
+	var tk struct{ Token string }
+	_ = json.Unmarshal(b, &tk)
+	if st, _ := e.do("POST", "/api/tokens", map[string]any{"label": "x", "profile": map[string]any{"namePrefix": "bad prefix!"}}); st != 400 {
+		t.Fatalf("a bad name prefix must be refused: %d", st)
+	}
+	e.startAgent(t, tk.Token)
+	// auto-approve: no click needed, and the profile is applied
+	dev := e.waitDevice(func(d devView) bool { return d.Online && d.Approved })
+	if !strings.HasPrefix(dev.Name, "HQ-") {
+		t.Fatalf("name prefix not applied: %q", dev.Name)
+	}
+	_, b = e.do("GET", "/api/devices", nil)
+	if !strings.Contains(string(b), `"group":"Reception"`) || !strings.Contains(string(b), `"office"`) {
+		t.Fatalf("group/tags not applied: %s", b)
+	}
+	// the agent received the profile and wrote what the tray shows
+	var s agent.TrayStatus
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		raw, err := os.ReadFile(filepath.Join(agent.PublicDir(), "status.json"))
+		if err == nil && json.Unmarshal(raw, &s) == nil && s.Org == "Acme Ltd" && s.State == "connected" && s.Control != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if s.Org != "Acme Ltd" || s.State != "connected" || s.SupportText == "" || !s.ShowTray || !s.AllowSupport {
+		t.Fatalf("tray status: %+v", s)
+	}
+	// "Request support" from the tray reaches the portal as an alert
+	req, _ := http.NewRequest("POST", "http://"+s.Control+"/support", strings.NewReader(`{"msg":"printer is on fire"}`))
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != 403 {
+		t.Fatalf("a request without the tray header must be refused: %v %v", err, resp)
+	}
+	req, _ = http.NewRequest("POST", "http://"+s.Control+"/support", strings.NewReader(`{"msg":"printer is on fire"}`))
+	req.Header.Set("X-Helm-Tray", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 204 {
+		t.Fatalf("support request: %v %v", err, resp)
+	}
+	ok := false
+	for i := 0; i < 50 && !ok; i++ {
+		_, b = e.do("GET", "/api/alerts", nil)
+		ok = strings.Contains(string(b), "asked for support") && strings.Contains(string(b), "printer is on fire")
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !ok {
+		t.Fatalf("no support alert: %s", b)
+	}
+}

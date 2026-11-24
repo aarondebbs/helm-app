@@ -228,3 +228,9 @@ When you turn on two-step verification, Helm shows the QR code, the **key** and 
 ## Install as an app (PWA)
 
 Open the console in Safari, Chrome or Edge and choose *Add to Home Screen* / *Install*. The app shell opens offline; data always comes from the server.
+
+## Customize the installer, and the taskbar icon
+
+On *Add a PC*, **Customize the installer** lets the person deploying choose, before downloading: the group and tags the PC joins, a name prefix, whether it must be approved in the portal (default) or is approved automatically, an organisation name, a support contact, and whether the taskbar icon and the *Request support* button appear. These settings belong to the enrollment token, so the same MSI template is used for everyone and nothing about the installer file changes; the PC applies them when it enrolls. A PC enrolled with manual approval shows as *Pending approval* in Devices and raises a "New PC waiting for approval" alert.
+
+On Windows the agent shows a Helm icon in the notification area (it starts for each signed-in user, runs with that user's rights and stops when the service stops). Click it for a small menu: connection status, this PC's name, the support contact, *Open Helm portal*, *Request support* and *About*. *Request support* creates a "Support requested" alert in the portal (at most one per minute). The icon reads a status file the service keeps in `C:\ProgramData\HelmPublic` that holds no secrets.

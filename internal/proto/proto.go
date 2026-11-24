@@ -13,6 +13,8 @@ const (
 	TOpen     = "open"     // server -> agent: open a data channel
 	TApproved = "approved" // server -> agent
 	TRevoked  = "revoked"  // server -> agent
+	TConfig   = "config"   // server -> agent: deploy profile (Data is a Config)
+	TSupport  = "support"  // agent -> server: the person at the PC asked for help (Msg)
 	TOpenFail = "openfail" // agent -> server: refused a TOpen (SID, Err)
 )
 
@@ -132,4 +134,14 @@ type OpenArgs struct {
 	Path      string `json:"path,omitempty"`      // filedl / fileul
 	Size      int64  `json:"size,omitempty"`      // fileul
 	Overwrite bool   `json:"overwrite,omitempty"` // fileul
+}
+
+// Config is the deploy profile the server sends to an agent each time it connects.
+// It only changes how the agent presents itself on the PC; it carries no secrets.
+type Config struct {
+	Org          string `json:"org,omitempty"`         // organisation name shown in the tray menu
+	SupportText  string `json:"supportText,omitempty"` // how to reach whoever supports this PC
+	ShowTray     bool   `json:"showTray"`              // show the icon in the notification area (Windows)
+	AllowSupport bool   `json:"allowSupport"`          // the tray menu offers "Request support"
+	PortalURL    string `json:"portalUrl,omitempty"`
 }

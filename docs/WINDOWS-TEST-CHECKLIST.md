@@ -91,3 +91,12 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] Add a viewer user; confirm they cannot change anything, open a remote screen, or see tokens.
 - [ ] Save the authenticator key in a password manager and sign in with its code.
 - [ ] Install the console as an app on iPhone and Android; open it offline.
+
+## 0.9.0
+
+- [ ] Install an MSI created with *Customize the installer* (group, tags, prefix, org, support text): the PC appears with them; with manual approval it waits, with automatic approval it goes online.
+- [ ] The Helm icon appears in the taskbar notification area within ~30 s of install and after sign-in; left and right click both open the menu.
+- [ ] Menu shows org, status, this PC, support text; *Open Helm portal* opens the browser as the user; *Request support* raises an alert in the portal.
+- [ ] Icon turns amber while pending/connecting and grey when offline; disappears when *Show the Helm icon* is off.
+- [ ] Switch users (Fast User Switching): each user gets their own icon. Restart Explorer: the icon comes back.
+- [ ] Upgrade and uninstall the MSI: no "files in use" prompt and no reboot request (the service stops the icons first).

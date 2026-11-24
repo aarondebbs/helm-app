@@ -317,3 +317,10 @@ func linuxShell() string {
 	}
 	return "sh"
 }
+
+func publicDirOS() string { return "" }
+
+func (a *Agent) trayKeeper(ctx context.Context) {}
+
+// RunTray: the taskbar icon exists on Windows only.
+func RunTray(args []string) int { return 0 }

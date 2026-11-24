@@ -44,6 +44,8 @@ func main() {
 		os.Exit(configureLinux(os.Args[2:]))
 	case "helper":
 		os.Exit(agent.RunHelper(os.Args[2:]))
+	case "tray":
+		os.Exit(agent.RunTray(os.Args[2:]))
 	case "service":
 		err := agent.RunService(agent.ServiceName, func(ctx context.Context) { runAgent(ctx, nil) })
 		if err != nil {
