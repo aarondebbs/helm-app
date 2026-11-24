@@ -82,25 +82,79 @@ func (s *Server) recheck(id, software string) (remaining int, rescanned bool) {
 	return remaining, true
 }
 
-func (s *Server) updateLinuxPackage(id, pkg string) error {
-	raw, err := s.callCmd(id, "updates.check", nil, "admin")
+// matchingUpdates returns the pending updates that belong to the named program: the package itself and its
+// sub-packages (openssl, openssl-libs, ...). Comparison ignores case.
+func matchingUpdates(ups []Patch, name string) []Patch {
+	want := strings.ToLower(strings.TrimSpace(name))
+	if want == "" {
+		return nil
+	}
+	var out []Patch
+	for _, u := range ups {
+		id, title := strings.ToLower(u.ID), strings.ToLower(u.Title)
+		switch {
+		case id == want, strings.HasPrefix(id, want+"-"), strings.HasPrefix(id, want+"."), strings.HasPrefix(id, want+":"):
+			out = append(out, u)
+		case strings.HasPrefix(title, want+" "):
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+func (s *Server) installMatching(id, name, who string) (bool, error) {
+	raw, err := s.callCmd(id, "updates.check", nil, who)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var res struct {
 		Updates []Patch `json:"updates"`
 	}
 	if json.Unmarshal(raw, &res) != nil {
-		return errors.New("unexpected answer from the update check")
+		return false, errors.New("unexpected answer from the update check")
 	}
-	for _, u := range res.Updates {
-		if u.ID == pkg {
-			args, _ := json.Marshal(map[string]any{"ids": []string{u.ID}, "reboot": false})
-			_, err = s.callCmd(id, "updates.install", args, "admin")
-			return err
-		}
+	m := matchingUpdates(res.Updates, name)
+	if len(m) == 0 {
+		return false, nil
+	}
+	ids := make([]string, 0, len(m))
+	for _, u := range m {
+		ids = append(ids, u.ID)
+	}
+	args, _ := json.Marshal(map[string]any{"ids": ids, "reboot": false})
+	_, err = s.callCmd(id, "updates.install", args, who)
+	return err == nil, err
+}
+
+func (s *Server) updateLinuxPackage(id, pkg string) error {
+	ok, err := s.installMatching(id, pkg, "admin")
+	if err != nil || ok {
+		return err
 	}
 	return fmt.Errorf("%w: no newer version of %s is available from this system's package sources; the fix may need a different repository or a newer OS release", errNoUpdate, pkg)
+}
+
+// updateMacProgram fixes a program on a Mac: through Homebrew when the program came from there, otherwise through
+// Apple's own updates (Safari, macOS itself and other Apple software). Apps installed by other means update themselves.
+func (s *Server) updateMacProgram(id, name string) error {
+	err := s.updateWingetProgram(id, name) // on a Mac this slot is Homebrew
+	if err == nil {
+		return nil
+	}
+	brewMissing := strings.Contains(err.Error(), "Homebrew is not installed")
+	if !errors.Is(err, errNoUpdate) && !brewMissing {
+		return err
+	}
+	lookup := name
+	if l := strings.ToLower(name); l == "macos" || l == "mac os x" || l == "os x" {
+		lookup = "macOS"
+	}
+	if ok, aerr := s.installMatching(id, lookup, "admin"); aerr != nil {
+		return aerr
+	} else if ok {
+		return nil
+	}
+	return fmt.Errorf("%w: %s is not managed by Homebrew and Apple has no update for it. Update it with its own updater or the App Store, or remove it", errNoUpdate, name)
 }
 
 func (s *Server) updateWingetProgram(id, name string) error {
@@ -157,7 +211,7 @@ func (s *Server) updateSoftware(d Device, software string) error {
 	case "linux":
 		return s.updateLinuxPackage(d.ID, software)
 	case "darwin":
-		return errors.New("macOS programs are updated by their own updater or the App Store; Helm cannot do it for you")
+		return s.updateMacProgram(d.ID, software)
 	}
 	return s.updateWingetProgram(d.ID, software)
 }

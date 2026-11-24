@@ -41,7 +41,7 @@ The script lists the releases with their dates and a line of the release log, yo
 4. asks you for an administrator password and prints the authenticator key to add to your app,
 5. starts the server on `http://127.0.0.1:8787`.
 
-Options: `-Version v0.10.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
+Options: `-Version v0.11.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
 (also opens the firewall) · `-Repo owner/name` (your own fork) · `-IncludePrerelease` · `-Uninstall` (`-PurgeData` deletes data too).
 Run it again any time to switch version; your data stays.
 
@@ -51,8 +51,8 @@ To publish it on the internet over HTTPS, install Tailscale on the server and ru
 
 ```bash
 sudo mkdir -p /opt/helm /var/lib/helm
-# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.10.0 and arm64/amd64 as needed)
-sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.10.0/helm-server-linux-arm64
+# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.11.0 and arm64/amd64 as needed)
+sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.11.0/helm-server-linux-arm64
 sudo chmod 0755 /opt/helm/helm-server && sudo ln -sf /opt/helm/helm-server /usr/local/bin/helm-server
 sudo curl -fL -o /etc/systemd/system/helm-server.service https://raw.githubusercontent.com/aarondebbs/helm-app/main/deploy/helm-server.service
 sudo useradd --system --home /var/lib/helm --shell /usr/sbin/nologin helm; sudo chown -R helm:helm /opt/helm /var/lib/helm
@@ -194,6 +194,13 @@ Settings, Updates, Patch window installs pending updates by itself on online PCs
 and whether to allow restarts or limit it to security updates. PCs are patched one at a time, at most once a day each,
 and results appear in the activity log. Times use the server's local time.
 
+## Updates on each operating system
+
+The Updates tab only offers what exists on that PC. Windows: Windows Update and winget. Linux: apt or dnf system updates
+(no app updater). macOS: Apple's `softwareupdate` for system updates and Homebrew for apps (needs Homebrew installed;
+casks that ask for an administrator password may fail). *Fix* on a vulnerability finding upgrades the package with the
+matching tool on that OS, and says so plainly when no fix is available. Scheduled jobs skip PCs they do not apply to.
+
 ## One-click fixes
 
 On the Security page, configuration findings that have a safe fix show a Fix button (Windows firewall, Defender
@@ -206,7 +213,13 @@ could lock you out of a remote server (SSH settings, disk encryption) is offered
 With several monitors a picker lets you choose which one to watch and control. Send my clipboard and Get PC clipboard
 move plain text between your browser and the PC. The frame rate and quality you choose are ceilings: Helm lowers them by
 itself while the connection is slow and raises them again when it recovers. These features run only on Windows and have
-not yet been tried on real hardware; see docs/WINDOWS-TEST-CHECKLIST.md. Capture reuses one bitmap, only changed tiles are copied and compressed, and capturing the next frame overlaps compressing
+not yet been tried on real hardware; see docs/WINDOWS-TEST-CHECKLIST.md.
+
+Since 0.11.0 the viewer acknowledges every frame it draws, and the PC never has more than two frames in flight, so a slow
+link can no longer build up a queue of stale frames. Helm now measures the real round trip to your browser (not the local
+socket) to pick the frame rate and quality. Text and flat areas are sent as compact palette PNG, photos and video as JPEG,
+the screen is captured right after a click or key press, and it sharpens by itself once the picture stops changing. Older
+browser tabs that do not acknowledge frames keep working, unthrottled. Capture reuses one bitmap, only changed tiles are copied and compressed, and capturing the next frame overlaps compressing
 and sending the last one, so up to 60 fps is possible for ordinary desktop use. Full-screen video is limited by the
 PC's CPU and the link. Two-way chat with the person at the PC is not built yet.
 
@@ -295,7 +308,7 @@ Open the console in Safari, Chrome or Edge and choose *Add to Home Screen* / *In
 
 On *Add a PC*, **Customize the installer** lets the person deploying choose, before downloading: the group and tags the PC joins, a name prefix, whether it must be approved in the portal (default) or is approved automatically, an organisation name, a support contact, and whether the taskbar icon and the *Request support* button appear. These settings belong to the enrollment token, so the same MSI template is used for everyone and nothing about the installer file changes; the PC applies them when it enrolls. A PC enrolled with manual approval shows as *Pending approval* in Devices and raises a "New PC waiting for approval" alert.
 
-On Windows the agent shows a Helm icon in the notification area (it starts for each signed-in user, runs with that user's rights and stops when the service stops). Click it for a small menu: connection status, this PC's name, the support contact, *Open Helm portal*, *Request support* and *About*. *Request support* creates a "Support requested" alert in the portal (at most one per minute). The icon reads a status file the service keeps in `C:\ProgramData\HelmPublic` that holds no secrets.
+On Windows the agent shows a Helm icon in the notification area (it starts for each signed-in user, runs with that user's rights and stops when the service stops). Click it for a small menu: connection status, this PC's name, the support contact, *Request support* and *About* (there is deliberately no link to the portal). *Request support* creates a "Support requested" alert in the portal (at most one per minute). The icon reads a status file the service keeps in `C:\ProgramData\HelmPublic` that holds no secrets.
 
 ## Security notes (0.9.1)
 

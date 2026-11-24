@@ -49,7 +49,6 @@ const (
 	tpmRightButton = 0x2
 	tpmBottomAlign = 0x20
 	swShow         = 5
-	idOpenPortal   = 1
 	idSupport      = 2
 	idAbout        = 3
 )
@@ -240,9 +239,6 @@ func (t *trayApp) menu() {
 		}
 	}
 	add(mfSeparator, 0, "")
-	if s.PortalURL != "" {
-		add(mfString, idOpenPortal, "Open Helm portal")
-	}
 	if s.AllowSupport {
 		fl := uintptr(mfString)
 		if state != "connected" {
@@ -259,11 +255,6 @@ func (t *trayApp) menu() {
 	cmd, _, _ := pTrackPopupMenu.Call(m, tpmReturnCmd|tpmRightButton|tpmBottomAlign, uintptr(p.X), uintptr(p.Y), 0, t.wnd, 0)
 	pPostMessage.Call(t.wnd, 0, 0, 0)
 	switch cmd {
-	case idOpenPortal:
-		if !strings.HasPrefix(s.PortalURL, "https://") && !strings.HasPrefix(s.PortalURL, "http://") {
-			return
-		}
-		pShellEx.Call(0, uintptr(unsafe.Pointer(wstr("open"))), uintptr(unsafe.Pointer(wstr(s.PortalURL))), 0, 0, swShow)
 	case idSupport:
 		go t.requestSupport(s)
 	case idAbout:

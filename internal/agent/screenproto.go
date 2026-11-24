@@ -87,6 +87,7 @@ type InputMsg struct {
 	Q     int     `json:"q,omitempty"`     // JPEG quality 20..90
 	FPS   int     `json:"fps,omitempty"`   // 1..15
 	Scale int     `json:"scale,omitempty"` // 1 or 2 (downscale divisor)
+	N     int     `json:"n,omitempty"`     // "ack": the frame number the viewer has finished drawing
 	// "mon" selects monitor number B; "clipset" puts Text on the PC's clipboard; "clipget" asks for the PC's clipboard text.
 }
 
@@ -165,6 +166,7 @@ type Adaptive struct {
 	MaxFPS, MaxQ int
 	fps, q       int
 	ewma         float64 // smoothed duration of one frame send, in milliseconds
+	rtt          float64 // smoothed frame round-trip time, in milliseconds
 }
 
 // SetCeiling applies the viewer's choice and clamps the current values to it.
@@ -199,6 +201,34 @@ func (a *Adaptive) Observe(d time.Duration) {
 		}
 	}
 }
+
+// ObserveRTT records the round-trip time of a frame (sent until the viewer finished drawing it). This is the real
+// measure of the link: above about 250 ms the picture is lagging, so quality and rate drop; below about 90 ms there is
+// room to raise them again.
+func (a *Adaptive) ObserveRTT(d time.Duration) {
+	ms := float64(d) / float64(time.Millisecond)
+	if a.rtt == 0 {
+		a.rtt = ms
+	} else {
+		a.rtt = 0.6*a.rtt + 0.4*ms
+	}
+	switch {
+	case a.rtt > 250:
+		a.fps = max(3, a.fps*3/4)
+		a.q = max(30, a.q-6)
+	case a.rtt < 90:
+		if a.fps < a.MaxFPS {
+			a.fps += 2
+			a.fps = min(a.fps, a.MaxFPS)
+		}
+		if a.q < a.MaxQ {
+			a.q = min(a.MaxQ, a.q+3)
+		}
+	}
+}
+
+// RTT returns the smoothed round-trip time in milliseconds (0 when unknown).
+func (a *Adaptive) RTT() float64 { return a.rtt }
 
 func (a *Adaptive) FPS() int     { return max(1, a.fps) }
 func (a *Adaptive) Quality() int { return max(20, a.q) }

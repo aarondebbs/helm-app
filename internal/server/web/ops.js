@@ -90,7 +90,7 @@ async function runScriptDialog(target, scriptId) {
 }
 
 // ---------- schedule dialog ----------
-const ACTIONS = { script: 'Run a script', scan: 'Security scan', 'updates.install': 'Install Windows updates', 'winget.upgrade_all': 'Upgrade all apps (winget)', restart: 'Restart PC' };
+const ACTIONS = { script: 'Run a script', scan: 'Security scan', 'updates.install': 'Install system updates (Windows Update, apt/dnf, macOS)', 'winget.upgrade_all': 'Update apps (winget on Windows, Homebrew on Mac)', restart: 'Restart' };
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function describeWhen(s) {
   if (s.kind === 'interval') return s.every % 60 === 0 && s.every >= 60 ? `Every ${s.every / 60} hour${s.every === 60 ? '' : 's'}` : `Every ${s.every} minutes`;
@@ -162,7 +162,7 @@ function viewAutomation(tab) {
             actionButton('Run now', async () => { if (sc.action === 'restart' && !(await confirmDialog('Restart every PC this schedule targets?', 'Restart', true))) return; const r = await api('POST', `/api/schedules/${sc.id}/run`, {}); showRun(r.id, sc.name); }, 'small'),
             actionButton('Edit', async () => { if (await scheduleEditor(sc)) load(); }, 'small'),
             actionButton('Delete', async () => { if (await confirmDialog('Delete schedule "' + sc.name + '"?', 'Delete', true)) { await api('DELETE', '/api/schedules/' + sc.id); load(); } }, 'small danger')))))))
-          : h('div', { class: 'panel' }, emptyState('🗓️', 'No schedules yet', 'Automate scans, updates and restarts. Example: scan every PC every night, or install Windows updates every Sunday at 3 AM.', actionButton('Create a schedule', async () => { if (await scheduleEditor()) load(); }, 'primary'))));
+          : h('div', { class: 'panel' }, emptyState('🗓️', 'No schedules yet', 'Automate scans, updates and restarts. Example: scan every machine every night, or install system updates every Sunday at 3 AM. Each machine uses its own updater, and steps that do not apply to its system are skipped.', actionButton('Create a schedule', async () => { if (await scheduleEditor()) load(); }, 'primary'))));
       } else {
         const list = await api('GET', '/api/runs'); if (my !== routeToken) return;
         clear(host).append(h('div', { class: 'panel flush' }, table(['Started', 'Task', 'Type', 'Trigger', 'Result', 'Status'].map(x => ({ label: x })), list.map(r => {

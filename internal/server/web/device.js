@@ -206,7 +206,8 @@ function tabUpdates(body, dev, id) {
     } catch (e) { clear(wuBox).append(h('div', { class: 'notice bad' }, e.message)); throw e; }
   });
 
-  const checkWG = actionButton('Check for app updates (winget)', async () => {
+  const mac = dev.hello && dev.hello.os === 'darwin', appTool = mac ? 'Homebrew' : 'winget';
+  const checkWG = actionButton('Check for app updates (' + appTool + ')', async () => {
     clear(wgBox).append(h('span', { class: 'spinner' }), ' Checking…');
     try {
       const r = await runCmd(id, 'winget.list', {}, { wait: 25 });
@@ -225,14 +226,14 @@ function tabUpdates(body, dev, id) {
             if (!(await confirmDialog('Upgrade all ' + pk.length + ' apps? Apps that are open may be closed by their installers.', 'Upgrade all', true))) return;
             const rr = await runCmd(id, 'winget.upgrade', { all: true }, { wait: 5, onProgress: prog, keepAlive: true });
             log.textContent = JSON.stringify(rr && rr.results ? rr.results : rr, null, 1); toast('Upgrade finished', 'ok');
-          })))] : h('p', null, 'All winget-managed apps are up to date.'),
-      h('p', { class: 'muted' }, 'winget runs as SYSTEM here, so per-user installs may not appear.'));
+          })))] : h('p', null, 'All ' + appTool + '-managed apps are up to date.'),
+      h('p', { class: 'muted' }, mac ? 'Only apps installed with Homebrew appear here. Apple software is under System updates; other apps update themselves.' : 'winget runs as SYSTEM here, so per-user installs may not appear.'));
     } catch (e) { clear(wgBox).append(h('div', { class: 'notice bad' }, e.message)); throw e; }
   });
   body.append(h('div', { class: 'panel' }, h('div', { class: 'row spread' }, h('h3', null, unix ? 'System updates' : 'Windows Update'), checkWU), wuBox),
-    unix ? null : h('div', { class: 'panel' }, h('div', { class: 'row spread' }, h('h3', null, 'Apps'), checkWG), wgBox),
+    unix && !mac ? null : h('div', { class: 'panel' }, h('div', { class: 'row spread' }, h('h3', null, mac ? 'Homebrew apps' : 'Apps'), checkWG), wgBox),
     log);
-  if (unix) checkWU.click();
+  if (unix) checkWU.click(); // Linux and macOS have no slow Windows Update agent, so this opens ready
 }
 
 // ---------- processes ----------
@@ -445,7 +446,12 @@ function tabScreen(body, dev, id) {
   const status = h('div', { class: 'notice' }, 'Not connected. When someone is signed in at the PC they are asked to allow the session first; at the sign-in screen it connects directly.');
   const ctx = canvas.getContext('2d');
   let ws = null, chain = Promise.resolve(), viewOnly = false, live = false, lastMove = 0;
-  const send = o => { if (ws && ws.readyState === 1 && live) ws.send(JSON.stringify(o)); };
+  // live numbers for the stats line: frames and bytes per second, and how long the picture takes to answer an action
+  const st = { frames: 0, bytes: 0, since: performance.now(), fps: 0, kbps: 0, resp: 0, acted: 0 };
+  const stats = h('span', { class: 'muted small-text screenstats' });
+  const tickStats = () => { const n = performance.now(), dt = (n - st.since) / 1000; if (dt < 1) return; st.fps = Math.round(st.frames / dt); st.kbps = Math.round(st.bytes * 8 / dt / 1000); st.frames = 0; st.bytes = 0; st.since = n; stats.textContent = live ? st.fps + ' fps · ' + (st.kbps >= 1000 ? (st.kbps / 1000).toFixed(1) + ' Mbit/s' : st.kbps + ' kbit/s') + (st.resp ? ' · responds in ' + Math.round(st.resp) + ' ms' : '') : ''; };
+  every(1000, tickStats);
+  const send = o => { if (ws && ws.readyState === 1 && live) { if (o.t === 'md' || o.t === 'kd' || o.t === 'wh') st.acted = performance.now(); ws.send(JSON.stringify(o)); } };
   const stop = () => { if (ws) { ws.close(); ws = null; } live = false; };
   onLeave(() => { stop(); });
 
@@ -483,13 +489,14 @@ function tabScreen(body, dev, id) {
       if (typeof ev.data === 'string') {
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m.t === 'screen') { canvas.width = m.w; canvas.height = m.h; live = true; status.className = 'notice'; status.textContent = 'Connected' + (viewOnly ? ' (view only)' : '') + '. Click the screen to send keyboard input.'; tune(); }
+        else if (m.t === 'fr') { chain = chain.then(() => { st.frames++; if (st.acted) { const d = performance.now() - st.acted; st.resp = st.resp ? st.resp * .7 + d * .3 : d; st.acted = 0; } send({ t: 'ack', n: m.n }); }); }
         else if (m.t === 'monitors') { showMonitors(m); }
         else if (m.t === 'clip') { clipFromPC(m); }
         else if (m.t === 'status') { status.textContent = m.msg; }
         else if (m.t === 'error' || (m.t === 'consent' && m.ok === false)) { status.className = 'notice bad'; status.textContent = m.msg || 'Refused'; }
         return;
       }
-      const buf = ev.data;
+      const buf = ev.data; st.bytes += buf.byteLength;
       chain = chain.then(() => drawTiles(buf)).catch(() => { });
     };
     ws.onclose = () => { live = false; ws = null; if (!status.classList.contains('bad')) status.textContent = 'Disconnected'; };
@@ -499,7 +506,9 @@ function tabScreen(body, dev, id) {
     const dv = new DataView(buf); const n = dv.getUint16(0); let o = 2; const jobs = [];
     for (let i = 0; i < n; i++) {
       const x = dv.getUint16(o), y = dv.getUint16(o + 2), len = dv.getUint32(o + 8); o += 12;
-      jobs.push(createImageBitmap(new Blob([new Uint8Array(buf, o, len)], { type: 'image/jpeg' })).then(bmp => ({ bmp, x, y })));
+      // text and interface regions arrive as PNG (exact), pictures as JPEG
+      const png = len > 4 && new Uint8Array(buf, o, 2)[0] === 0x89;
+      jobs.push(createImageBitmap(new Blob([new Uint8Array(buf, o, len)], { type: png ? 'image/png' : 'image/jpeg' })).then(bmp => ({ bmp, x, y })));
       o += len;
     }
     for (const t of await Promise.all(jobs)) { ctx.drawImage(t.bmp, t.x, t.y); t.bmp.close(); }
@@ -520,9 +529,9 @@ function tabScreen(body, dev, id) {
       h('button', { class: 'small', onclick: () => send({ t: 'refresh' }) }, 'Refresh'),
       h('button', { class: 'small', onclick: sendClip }, 'Send my clipboard'),
       h('button', { class: 'small', onclick: () => send({ t: 'clipget' }) }, 'Get PC clipboard'),
-      h('button', { class: 'small', onclick: () => { if (box.requestFullscreen) box.requestFullscreen(); } }, 'Full screen')),
+      h('button', { class: 'small', onclick: () => { if (box.requestFullscreen) box.requestFullscreen(); } }, 'Full screen'), stats),
     status, box,
-    h('p', { class: 'muted' }, 'Streams the PC\'s console session (including the sign-in screen). The frame rate and quality you pick are the most it will use; Helm lowers them by itself when the connection is slow and raises them again when it recovers. Clipboard transfer is text only. For a full-speed session use an RDP tunnel from the Tools tab.')));
+    h('p', { class: 'muted' }, 'Streams the PC\'s console session (including the sign-in screen). The frame rate and quality you pick are the most it will use; Helm measures how long each frame takes to reach you and lowers them by itself when the connection is slow, then raises them again when it recovers. Text and menus are sent exactly (lossless), pictures as JPEG, and anything that was sent softly sharpens a moment after it stops moving. Clipboard transfer is text only. For a full-speed session use an RDP tunnel from the Tools tab.')));
 }
 
 // ---------- security ----------
@@ -538,7 +547,7 @@ async function tabSecurity(body, dev, id) {
     clear(host);
     if (!v || !v.hasData) {
       if (v && v.status === 'running') { host.append(h('div', { class: 'panel' }, emptyState('🛡️', 'Scanning…', 'Collecting software, settings, ports and updates. This page updates automatically.'))); return; }
-      host.append(h('div', { class: 'panel' }, emptyState('🛡️', v && v.status === 'failed' ? 'The scan could not collect any data' : 'This PC has not been scanned yet', v && v.errors && v.errors.length ? v.errors.join(' · ') : dev.online ? 'A scan checks installed software for known vulnerabilities, missing Windows updates, risky settings and open ports. It takes a minute or two.' : 'The PC is offline. It will be scanned automatically when it is back.', dev.online ? startScan : null)));
+      host.append(h('div', { class: 'panel' }, emptyState('🛡️', v && v.status === 'failed' ? 'The scan could not collect any data' : 'This PC has not been scanned yet', v && v.errors && v.errors.length ? v.errors.join(' · ') : dev.online ? 'A scan checks installed software for known vulnerabilities, missing system updates, risky settings and open ports. It takes a minute or two.' : 'The PC is offline. It will be scanned automatically when it is back.', dev.online ? startScan : null)));
       return;
     }
     const running = v.status === 'running';

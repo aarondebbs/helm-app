@@ -46,7 +46,7 @@ func cleanProfile(p *Profile) (*Profile, error) {
 
 // configFrame builds the deploy-profile frame sent to an agent when it connects.
 func (s *Server) configFrame(r *http.Request, d Device) proto.Frame {
-	cfg := proto.Config{ShowTray: true, AllowSupport: true, PortalURL: s.baseURL(r)}
+	cfg := proto.Config{ShowTray: true, AllowSupport: true}
 	if p := d.Profile; p != nil {
 		cfg.Org, cfg.SupportText, cfg.ShowTray, cfg.AllowSupport = p.Org, p.SupportText, !p.HideTray, !p.NoSupportBtn
 	}

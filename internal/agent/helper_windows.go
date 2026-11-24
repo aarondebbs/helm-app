@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"image"
-	"image/jpeg"
 	"net/http"
 	"os"
 	"runtime"
@@ -368,6 +366,9 @@ type capturer struct {
 	mon      int // index into mons; only used when there is more than one monitor
 	vx, vy   int // virtual desktop origin and size, for mapping the pointer
 	vw, vh   int
+	flow     *FlowControl // frames in flight, acknowledged by the viewer
+	soft     SoftRegions  // regions sent as lower-quality JPEG, sharpened once the picture is still
+	changed  time.Time    // when the picture last changed
 }
 
 // attach makes the calling thread use the desktop that currently receives input.
@@ -482,7 +483,9 @@ func (cp *capturer) scaleFrame() {
 type encJob struct {
 	rects   []Rect
 	pix     [][]byte
+	flat    []bool // palette PNG candidates (text, UI); the rest are JPEG
 	quality int
+	seq     int // frame number the viewer acknowledges
 }
 
 // encodeAndSend turns a job into JPEG tiles and writes them. It runs in its own goroutine so the next frame can be
@@ -498,10 +501,7 @@ func (cp *capturer) encodeAndSend(c *ws.Conn, job encJob) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 			r := job.rects[i]
-			img := &image.RGBA{Pix: job.pix[i], Stride: r.W * 4, Rect: image.Rect(0, 0, r.W, r.H)}
-			var buf bytes.Buffer
-			_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: job.quality})
-			tiles[i] = Tile{X: r.X, Y: r.Y, W: r.W, H: r.H, JPEG: buf.Bytes()}
+			tiles[i] = Tile{X: r.X, Y: r.Y, W: r.W, H: r.H, JPEG: EncodeRegion(job.pix[i], r.W, r.H, job.flat[i], job.quality)}
 		}(i)
 	}
 	wg.Wait()
@@ -517,14 +517,28 @@ func (cp *capturer) encodeAndSend(c *ws.Conn, job encJob) error {
 		}
 		tiles = tiles[n:]
 	}
-	cp.adMu.Lock()
-	cp.ad.Observe(time.Since(sendStart)) // slow sends lower fps and quality; fast ones restore them
-	cp.adMu.Unlock()
+	// The viewer answers this marker with an acknowledgement once the frame is drawn.
+	if err := c.WriteMessage(ws.OpText, []byte(fmt.Sprintf(`{"t":"fr","n":%d}`, job.seq))); err != nil {
+		return err
+	}
+	if !cp.flow.Capable() { // an old viewer: all there is to go on is how fast the local write was
+		cp.adMu.Lock()
+		cp.ad.Observe(time.Since(sendStart))
+		cp.adMu.Unlock()
+	}
 	return nil
 }
 
+func isActionInput(t string) bool {
+	switch t {
+	case "md", "mu", "kd", "ku", "wh", "txt":
+		return true
+	}
+	return false
+}
+
 func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly bool) {
-	cp := &capturer{scale: 1, force: true}
+	cp := &capturer{scale: 1, force: true, flow: NewFlowControl()}
 	cp.ad.SetCeiling(8, 55)
 	defer cp.freeDIB()
 	var sendMu sync.Mutex
@@ -563,6 +577,11 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 			select {
 			case m := <-in:
 				cp.handle(m, viewOnly)
+				if isActionInput(m.T) { // show the result of a click or key press straight away, not at the next tick
+					if t := time.Now().Add(12 * time.Millisecond); t.Before(next) {
+						next = t
+					}
+				}
 			default:
 				drain = false
 			}
@@ -571,6 +590,11 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 			select {
 			case m := <-in:
 				cp.handle(m, viewOnly)
+				if isActionInput(m.T) {
+					if t := time.Now().Add(12 * time.Millisecond); t.Before(next) {
+						next = t
+					}
+				}
 				continue
 			case <-ctx.Done():
 				return
@@ -591,6 +615,9 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 			cp.refreshMonitors()
 		}
 		frames++
+		if !cp.flow.CanSend() { // the viewer is still drawing earlier frames: do not queue more
+			continue
+		}
 		if !cp.attach() {
 			continue
 		}
@@ -607,41 +634,77 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 		}
 		if cp.force {
 			cp.prev, cp.force = nil, false
+			cp.soft.Take() // everything is about to be sent again
 		}
 		if len(cp.prev) != len(cp.cur) {
 			cp.prev = nil
 		}
 		rects := ChangedRects(cp.prev, cp.cur, cp.sw, cp.sh, TileSize)
 		if len(rects) == 0 {
+			// Nothing moved. Once the picture has been still for a moment, send the regions that went out as
+			// low-quality JPEG again at high quality, so text and photos sharpen up by themselves.
+			if cp.soft.Len() > 0 && time.Since(cp.changed) > 250*time.Millisecond {
+				cp.queueJob(ctx, jobs, failed, cp.soft.Take(), nil, 90)
+			}
 			continue
 		}
+		cp.changed = time.Now()
 		if cp.prev == nil {
 			cp.prev = make([]byte, len(cp.cur))
 		}
+		cp.soft.Invalidate(rects)
 		total := ((cp.sw + TileSize - 1) / TileSize) * ((cp.sh + TileSize - 1) / TileSize)
-		job := encJob{rects: rects, pix: make([][]byte, len(rects)), quality: MotionQuality(cp.quality, len(rects), total)}
-		var cw sync.WaitGroup
-		sem := make(chan struct{}, max(1, runtime.NumCPU()))
+		flat := make([]bool, len(rects))
 		for i, r := range rects {
-			cw.Add(1)
-			sem <- struct{}{}
-			go func(i int, r Rect) {
-				defer cw.Done()
-				defer func() { <-sem }()
-				job.pix[i] = RectRGBA(cp.cur, cp.sw, r)
-			}(i, r)
+			flat[i] = FlatBGRA(cp.cur, cp.sw, r)
 		}
-		cw.Wait()
+		merged, mflat := MergeRuns(rects, flat)
+		q := MotionQuality(cp.quality, len(rects), total)
+		if !cp.queueJob(ctx, jobs, failed, merged, mflat, q) {
+			return
+		}
 		for _, r := range rects {
 			CopyRect(cp.prev, cp.cur, cp.sw, r) // the viewer will have this region once the job is sent
 		}
-		select {
-		case jobs <- job:
-		case <-ctx.Done():
-			return
-		case <-failed:
-			return
+	}
+}
+
+// queueJob converts regions of the current frame and hands them to the sender. It reports false when the session ended.
+// flat may be nil, meaning every region is JPEG (used for the sharpening pass).
+func (cp *capturer) queueJob(ctx context.Context, jobs chan<- encJob, failed <-chan struct{}, rects []Rect, flat []bool, quality int) bool {
+	if len(rects) == 0 {
+		return true
+	}
+	if flat == nil {
+		flat = make([]bool, len(rects))
+	}
+	job := encJob{rects: rects, pix: make([][]byte, len(rects)), flat: flat, quality: quality, seq: cp.flow.Sent()}
+	var cw sync.WaitGroup
+	sem := make(chan struct{}, max(1, runtime.NumCPU()))
+	for i, r := range rects {
+		cw.Add(1)
+		sem <- struct{}{}
+		go func(i int, r Rect) {
+			defer cw.Done()
+			defer func() { <-sem }()
+			job.pix[i] = RectRGBA(cp.cur, cp.sw, r)
+		}(i, r)
+	}
+	cw.Wait()
+	if quality < 88 { // JPEG regions sent softly get sharpened later
+		for i, r := range rects {
+			if !flat[i] {
+				cp.soft.Add(r)
+			}
 		}
+	}
+	select {
+	case jobs <- job:
+		return true
+	case <-ctx.Done():
+		return false
+	case <-failed:
+		return false
 	}
 }
 
@@ -833,6 +896,13 @@ func typeRune(r rune) {
 
 func (cp *capturer) handle(m InputMsg, viewOnly bool) {
 	switch m.T {
+	case "ack":
+		if rtt, ok := cp.flow.Ack(m.N); ok {
+			cp.adMu.Lock()
+			cp.ad.ObserveRTT(rtt)
+			cp.adMu.Unlock()
+		}
+		return
 	case "q":
 		cp.adMu.Lock()
 		q, fps := cp.ad.MaxQ, cp.ad.MaxFPS

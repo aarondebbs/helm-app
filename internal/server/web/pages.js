@@ -249,7 +249,7 @@ async function viewSecurity(tab) {
       h('div', null, h('div', { class: 'ft' }, x.title, x.cve ? h('a', { href: 'https://nvd.nist.gov/vuln/detail/' + encodeURIComponent(x.cve), target: '_blank', rel: 'noopener noreferrer', style: { marginLeft: '8px', fontWeight: 400 } }, 'NVD ↗') : null,
         x.score ? h('span', { class: 'muted', style: { fontWeight: 400 } }, '  CVSS ' + x.score.toFixed(1)) : null, x.accepted ? h('span', { class: 'badge', style: { marginLeft: '8px' } }, 'accepted risk') : null, x.noFix ? h('span', { class: 'badge', style: { marginLeft: '8px' } }, 'no update published') : null, x.exploited ? h('span', { class: 'badge kev', style: { marginLeft: '8px' } }, 'actively exploited') : null),
         x.detail ? h('div', { class: 'fd' }, x.detail) : null, x.fix ? h('div', { class: 'ff' }, '→ ' + x.fix) : null,
-        h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, x.kind === 'cve' ? 'Potentially affected: the version matches the vulnerable range; Windows-level fixes or backported patches are not detected.' : '')),
+        h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, x.kind === 'cve' ? 'Potentially affected: the version matches the vulnerable range; fixes backported by the operating system vendor are not detected, so confirm with the update check.' : '')),
       h('div', { class: 'right' }, h('button', { class: 'small', onclick: () => affectedDialog(x) }, plural(x.devices.length, 'PC')), x.accepted ? null : fixButton(x), acceptButton(x))))),
       list.length > 200 ? h('p', { class: 'muted', style: { marginTop: '10px' } }, 'Showing the first 200 of ' + list.length + '. Export the CSV for everything.') : null);
   };

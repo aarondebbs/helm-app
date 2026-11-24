@@ -742,8 +742,9 @@ func (a *Agent) macHandlers(m map[string]handlerFn) {
 	m["updates.install"] = a.macUpdatesInstall
 	m["scan.ports"] = wrap(a.macScanPorts)
 	m["scan.config"] = wrap(a.macScanConfig)
-	m["winget.list"] = unsupported("winget")
-	m["winget.upgrade"] = unsupported("winget")
+	// "winget.*" is the app-updater slot on every OS: on a Mac it is Homebrew.
+	m["winget.list"] = a.macBrewList
+	m["winget.upgrade"] = a.macBrewUpgrade
 	m["winget.install"] = unsupported("Installing from a package manager (upload a .pkg under Software to deploy apps)")
 	m["winget.uninstall"] = unsupported("Removing software remotely")
 	m["rdp.status"] = func(ctx context.Context, c *cmdCtx) (any, error) {

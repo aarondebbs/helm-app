@@ -763,7 +763,7 @@ function viewDevices() {
       bulkBtn('Restart', 'power', { action: 'restart', delay: 30, message: 'Restarting (Helm)' }, true),
       bulkBtn('Shut down', 'power', { action: 'shutdown', delay: 30, message: 'Shutting down (Helm)' }, true),
       bulkBtn('Lock', 'power', { action: 'lock' }, false),
-      bulkBtn('Install Windows updates', 'updates.install', { reboot: false }, true),
+      bulkBtn('Install system updates', 'updates.install', { reboot: false }, true),
       h('button', { onclick: () => { selected.clear(); renderBulk(); draw(true); } }, 'Clear'));
   };
   const onSel = (id, on) => { on ? selected.add(id) : selected.delete(id); renderBulk(); };

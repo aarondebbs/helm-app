@@ -168,7 +168,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, sess *s
 		}
 		groups[g]++
 		if d.Hello != nil {
-			osCount[osLabel(d.Hello.OSVersion, d.Hello.Edition)]++
+			osCount[osLabel(d.Hello.OS, d.Hello.OSVersion, d.Hello.Edition)]++
 		}
 		if a := online[d.ID]; a != nil {
 			on++
@@ -251,7 +251,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, sess *s
 	})
 }
 
-func osLabel(ver, edition string) string {
+func osLabel(goos, ver, edition string) string {
+	switch goos {
+	case "darwin":
+		return "macOS"
+	case "linux":
+		return "Linux"
+	}
 	switch {
 	case strings.Contains(ver, "10.0.2"):
 		return "Windows 11"

@@ -124,6 +124,11 @@ func (s *Server) execRun(run *Run, devs []Device, spec runSpec, actor string) {
 				s.setResult(run.ID, i, rr)
 				return
 			}
+			if why := notApplicable(d, spec.Cmd); why != "" {
+				rr.Status, rr.Err = "skipped", why
+				s.setResult(run.ID, i, rr)
+				return
+			}
 			if spec.Scan {
 				if err := s.startScan(d.ID, actor); err != nil {
 					rr.Status, rr.Err = "error", err.Error()
@@ -147,6 +152,22 @@ func (s *Server) execRun(run *Run, devs []Device, spec runSpec, actor string) {
 		}(i, d)
 	}
 	wg.Wait()
+}
+
+// notApplicable says why a command makes no sense on this machine's operating system ("" when it does), so a schedule
+// that targets a mixed group skips a Linux server instead of failing on it.
+func notApplicable(d Device, cmd string) string {
+	os := ""
+	if d.Hello != nil {
+		os = d.Hello.OS
+	}
+	switch {
+	case cmd == "winget.upgrade" && os == "linux":
+		return "Not applicable: Linux updates its apps together with the system updates"
+	case (cmd == "rdp.enable" || cmd == "rdp.disable") && os != "" && os != "windows":
+		return "Not applicable: Remote Desktop is a Windows feature"
+	}
+	return ""
 }
 
 func summarize(cmd string, raw json.RawMessage) (string, *int) {
