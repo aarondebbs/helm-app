@@ -287,6 +287,10 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		h.Set("X-Permitted-Cross-Domain-Policies", "none")
 		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; "+
 			"connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		if !s.cfg.Dev {
@@ -338,6 +342,10 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	// a client that trickles its body must not hold the connection open
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(30 * time.Second))
+	defer func() { _ = rc.SetReadDeadline(time.Time{}) }()
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(v); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
@@ -350,6 +358,11 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 func sameOrigin(r *http.Request) bool {
 	o := r.Header.Get("Origin")
 	if o == "" {
+		// no Origin (older clients, some tools): fall back to Referer when the browser sent one
+		if ref := r.Header.Get("Referer"); ref != "" {
+			u, err := url.Parse(ref)
+			return err == nil && strings.EqualFold(u.Host, r.Host)
+		}
 		return true
 	}
 	u, err := url.Parse(o)

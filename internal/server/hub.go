@@ -265,6 +265,7 @@ func (h *Hub) finish(id, errMsg string, data json.RawMessage) {
 func (h *Hub) progress(id, msg string, pct int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	msg = clip(msg, 500)
 	if j := h.jobs[id]; j != nil && j.Status == "running" {
 		if h.onProgress != nil {
 			h.onProgress(id, pct, msg)

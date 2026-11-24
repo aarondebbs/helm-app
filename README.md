@@ -234,3 +234,16 @@ Open the console in Safari, Chrome or Edge and choose *Add to Home Screen* / *In
 On *Add a PC*, **Customize the installer** lets the person deploying choose, before downloading: the group and tags the PC joins, a name prefix, whether it must be approved in the portal (default) or is approved automatically, an organisation name, a support contact, and whether the taskbar icon and the *Request support* button appear. These settings belong to the enrollment token, so the same MSI template is used for everyone and nothing about the installer file changes; the PC applies them when it enrolls. A PC enrolled with manual approval shows as *Pending approval* in Devices and raises a "New PC waiting for approval" alert.
 
 On Windows the agent shows a Helm icon in the notification area (it starts for each signed-in user, runs with that user's rights and stops when the service stops). Click it for a small menu: connection status, this PC's name, the support contact, *Open Helm portal*, *Request support* and *About*. *Request support* creates a "Support requested" alert in the portal (at most one per minute). The icon reads a status file the service keeps in `C:\ProgramData\HelmPublic` that holds no secrets.
+
+## Security notes (0.9.1)
+
+A penetration test of a private test instance covered login, sessions, 2FA, roles, injection, file paths, the agent channel and request limits. Hardening from it:
+
+- Lockout buckets are per account name, so one person's failed attempts cannot lock out another.
+- Each TOTP code can be used once, even when two requests arrive at the same moment.
+- Data sent by agents (host name, MACs, IPs, errors, progress) is cleaned and size-limited.
+- Agents that are not yet approved cannot raise support requests.
+- Slow request bodies are cut off after 30 seconds.
+- Extra headers: Permissions-Policy, COOP, CORP.
+
+Run Helm behind Tailscale ACLs or an allow-list where you can, and keep admin accounts on 2FA. Admins can run commands on enrolled PCs by design.

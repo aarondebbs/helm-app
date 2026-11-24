@@ -268,7 +268,8 @@ func (s *Store) CreateTokenP(label string, ttl time.Duration, maxUses int, pf *P
 var errBadToken = errors.New("invalid or expired enrollment token")
 
 // Enroll validates a token, consumes one use and registers a pending device.
-func (s *Store) Enroll(token string, h proto.Hello, ip string) (id, secret string, err error) {
+func (s *Store) Enroll(token string, h0 proto.Hello, ip string) (id, secret string, err error) {
+	h := h0.Sanitize()
 	hash := sha256hex(token)
 	secret = randB64(32)
 	id = randHex(8)
@@ -460,4 +461,25 @@ func (s *Store) setPasswordFor(user, password string) error {
 		return err
 	}
 	return s.mutAccount(user, func(a *Admin) { a.Salt, a.Hash, a.Iter = salt, hash, iter })
+}
+
+// takeStep records a TOTP time step as used. It succeeds only once per step, even when two requests carrying the
+// same code arrive at the same moment (the check and the update happen under one lock).
+func (s *Store) takeStep(user string, step int64) bool {
+	ok := false
+	_ = s.update(func(d *data) error {
+		a := d.findUser(user)
+		if a == nil {
+			return errors.New("no such user")
+		}
+		if a.TOTPSecret == "" { // two-step verification is off: nothing to replay
+			ok = true
+			return nil
+		}
+		if step > a.LastStep {
+			a.LastStep, ok = step, true
+		}
+		return nil
+	})
+	return ok
 }

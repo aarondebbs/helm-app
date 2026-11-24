@@ -29,12 +29,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "bad origin")
 		return
 	}
-	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed("admin") {
+	if !s.loginIP.allowed(ip) {
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
 	var req struct{ User, Password, Code string }
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if !s.loginAcct.allowed(s.acctKey(req.User)) {
+		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
 	if !s.st.HasAdmin() {
@@ -49,13 +53,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	step, codeOK := adm.checkCode(req.Code)
 	if !pwOK || !codeOK {
 		s.loginIP.fail(ip)
-		s.loginAcct.fail("admin")
+		s.loginAcct.fail(s.acctKey(req.User))
 		s.audit.add(AuditEntry{IP: ip, Action: "login_failed"})
 		time.Sleep(500 * time.Millisecond)
 		writeErr(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
-	_ = s.st.mutAccount(adm.User, func(a *Admin) { a.LastStep = step })
+	if !s.st.takeStep(adm.User, step) { // the same code used twice at once
+		s.loginIP.fail(ip)
+		writeErr(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
 	s.loginIP.reset(ip)
 	token, sess := s.sess.create(ip, r.UserAgent(), adm.User, adm.Role)
 	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: token, Path: "/", HttpOnly: true,
@@ -86,7 +94,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, sess *sess
 
 func (s *Server) handleStepUp(w http.ResponseWriter, r *http.Request, sess *session) {
 	ip := s.clientIP(r)
-	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed("admin") {
+	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed(s.acctKey(sess.User)) {
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
@@ -101,12 +109,15 @@ func (s *Server) handleStepUp(w http.ResponseWriter, r *http.Request, sess *sess
 	}
 	if !ok {
 		s.loginIP.fail(ip)
-		s.loginAcct.fail("admin")
+		s.loginAcct.fail(s.acctKey(sess.User))
 		s.record(r, "stepup_failed", "", "")
 		writeErr(w, http.StatusUnauthorized, "invalid or already used code (wait for the next one)")
 		return
 	}
-	_ = s.st.mutAccount(sess.User, func(a *Admin) { a.LastStep = step })
+	if !s.st.takeStep(sess.User, step) {
+		writeErr(w, http.StatusUnauthorized, "invalid or already used code (wait for the next one)")
+		return
+	}
 	s.sess.grantStepUp(sess)
 	s.record(r, "stepup", "", "")
 	writeJSON(w, 200, map[string]any{"stepUpUntil": sess.StepUpUntil})
@@ -124,14 +135,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request, se
 		return
 	}
 	ip := s.clientIP(r)
-	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed("admin") {
+	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed(s.acctKey(sess.User)) {
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
 	adm := s.st.account(sess.User)
 	if !checkPassword(adm, adm.User, req.Current) {
 		s.loginIP.fail(ip)
-		s.loginAcct.fail("admin")
+		s.loginAcct.fail(s.acctKey(sess.User))
 		s.record(r, "password_change_failed", "", "")
 		writeErr(w, http.StatusUnauthorized, "current password is wrong")
 		return
@@ -157,14 +168,14 @@ func (s *Server) handleChangeUsername(w http.ResponseWriter, r *http.Request, se
 		return
 	}
 	ip := s.clientIP(r)
-	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed("admin") {
+	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed(s.acctKey(sess.User)) {
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return
 	}
 	adm := s.st.account(sess.User)
 	if !checkPassword(adm, adm.User, req.Password) {
 		s.loginIP.fail(ip)
-		s.loginAcct.fail("admin")
+		s.loginAcct.fail(s.acctKey(sess.User))
 		s.record(r, "username_change_failed", "", "")
 		writeErr(w, http.StatusUnauthorized, "current password is wrong")
 		return
@@ -655,6 +666,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 		case proto.THello:
 			var h proto.Hello
 			if json.Unmarshal(f.Data, &h) == nil {
+				h = h.Sanitize()
 				s.st.touch(func(d *data) {
 					if x := d.Devices[dev.ID]; x != nil {
 						x.Hello = &h
@@ -671,7 +683,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			}
 		case proto.TResult:
 			if j := s.hub.snapshot(f.ID); j != nil && j.DeviceID == a.ID {
-				s.hub.finish(f.ID, f.Err, f.Data)
+				s.hub.finish(f.ID, clip(f.Err, 4000), f.Data)
 			}
 		case proto.TProgress:
 			if j := s.hub.snapshot(f.ID); j != nil && j.DeviceID == a.ID {
@@ -682,7 +694,9 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 				s.hub.progress(f.ID, f.Msg, pct)
 			}
 		case proto.TSupport:
-			s.supportRequest(dev.ID, f.Msg, ip)
+			if a.approved.Load() { // a PC nobody has approved yet cannot raise alerts
+				s.supportRequest(dev.ID, f.Msg, ip)
+			}
 		case proto.TOpenFail:
 			s.hub.refuse(f.SID, f.Err)
 		}
@@ -711,7 +725,7 @@ func (s *Server) handleAgentChan(w http.ResponseWriter, r *http.Request) {
 
 var (
 	reDir  = regexp.MustCompile(`^[a-z0-9_-]{1,40}$`)
-	reFile = regexp.MustCompile(`^[A-Za-z0-9._-]{1,120}$`)
+	reFile = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]{0,119}$`) // never starts with a dot, so no "." or ".."
 )
 
 type releaseFile struct {
@@ -807,4 +821,22 @@ func parseVer(v string) [3]int {
 func (s *Server) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
 	adm := s.st.admin()
 	writeJSON(w, 200, map[string]bool{"totp": adm == nil || adm.TOTPSecret != "", "google": s.googleOn()})
+}
+
+// acctKey names the rate-limit bucket of a sign-in attempt: one per real user, so one person's mistakes (or an
+// attacker guessing one name) never lock the others out, and one shared bucket for names that do not exist so the
+// table cannot be grown by guessing random names.
+func (s *Server) acctKey(user string) string {
+	if s.st.account(user) != nil {
+		return "u:" + user
+	}
+	return "unknown"
+}
+
+// clip limits text that came from an agent.
+func clip(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }

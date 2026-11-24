@@ -17,14 +17,14 @@ var pend2fa struct {
 
 func (s *Server) check2faPassword(w http.ResponseWriter, r *http.Request, sess *session, pw string) bool {
 	ip := s.clientIP(r)
-	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed("admin") {
+	if !s.loginIP.allowed(ip) || !s.loginAcct.allowed(s.acctKey(sess.User)) {
 		writeErr(w, http.StatusTooManyRequests, "too many attempts, try again later")
 		return false
 	}
 	adm := s.st.account(sess.User)
 	if !checkPassword(adm, adm.User, pw) {
 		s.loginIP.fail(ip)
-		s.loginAcct.fail("admin")
+		s.loginAcct.fail(s.acctKey(sess.User))
 		s.record(r, "2fa_change_failed", "", "")
 		writeErr(w, http.StatusForbidden, "current password is wrong")
 		return false

@@ -145,3 +145,37 @@ type Config struct {
 	AllowSupport bool   `json:"allowSupport"`          // the tray menu offers "Request support"
 	PortalURL    string `json:"portalUrl,omitempty"`
 }
+
+// Sanitize bounds everything an agent reports about itself, so a misbehaving or hostile agent cannot bloat the
+// server's state or smuggle control characters into logs and reports. It returns the cleaned copy.
+func (h Hello) Sanitize() Hello {
+	cut := func(s string, n int) string {
+		r := []rune(s)
+		if len(r) > n {
+			r = r[:n]
+		}
+		out := make([]rune, 0, len(r))
+		for _, c := range r {
+			if c >= 0x20 && c != 0x7f {
+				out = append(out, c)
+			}
+		}
+		return string(out)
+	}
+	list := func(in []string, items, n int) []string {
+		var out []string
+		for _, s := range in {
+			if len(out) >= items {
+				break
+			}
+			if s = cut(s, n); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	h.Version, h.Hostname, h.OS, h.OSVersion = cut(h.Version, 40), cut(h.Hostname, 100), cut(h.OS, 20), cut(h.OSVersion, 80)
+	h.Edition, h.Arch, h.User, h.ConsentMode = cut(h.Edition, 80), cut(h.Arch, 20), cut(h.User, 100), cut(h.ConsentMode, 30)
+	h.MACs, h.IPs = list(h.MACs, 16, 40), list(h.IPs, 32, 64)
+	return h
+}
