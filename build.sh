@@ -38,6 +38,12 @@ sign_pe() {
   osslsigncode sign -pkcs12 "$HELM_SIGN_PFX" -pass "${HELM_SIGN_PASS:-}" -n "Helm" -h sha256 \
       -t "${HELM_SIGN_TS:-http://timestamp.digicert.com}" -in "$1" -out "$1.signed" && mv "$1.signed" "$1"
 }
+# Windows server (service build for Windows Server / Windows 10+). Same release key, shipped in the GitHub release.
+for arch in amd64 arm64; do
+  GOOS=windows GOARCH=$arch go build -trimpath -ldflags "-X main.version=$VERSION -X main.updatePubKey=$PUB" -o "$OUT/helm-server-windows-$arch.exe" ./cmd/helm-server
+  sign_pe "$OUT/helm-server-windows-$arch.exe"
+done
+
 for arch in amd64 arm64; do
   GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$LD" -o "$OUT/agent/helm-agent-windows-$arch.exe" ./cmd/helm-agent
   sign_pe "$OUT/agent/helm-agent-windows-$arch.exe"
@@ -78,7 +84,8 @@ sign_pe "$OUT/server-data/dist/Helm-Agent.msi"; sign_pe "$OUT/server-data/dist/H
 # ---- GitHub release bundle: everything the cloud updater needs, signed with the release key ----
 REL="$OUT/release"; mkdir -p "$REL"
 cp "$OUT"/agent/helm-agent-* "$REL/"
-cp "$OUT"/helm-server-linux-* "$REL/"
+cp "$OUT"/helm-server-linux-* "$OUT"/helm-server-windows-*.exe "$REL/"
+cp deploy/windows/Install-HelmServer.ps1 "$REL/"
 cp "$OUT"/server-data/dist/{Helm-Agent.msi,Helm-Agent.template.msi,helm-agent.service,install-linux.sh,install-macos.sh,com.helm.agent.plist} "$REL/"
 cp "$OUT"/server-data/dist/*.deb "$REL/"
 for extra in "$OUT"/server-data/dist/*.pkg; do [[ -f $extra ]] && cp "$extra" "$REL/"; done

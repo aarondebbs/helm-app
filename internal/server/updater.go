@@ -32,6 +32,9 @@ const manifestAsset = "helm-release.json"
 
 var reRepo = regexp.MustCompile(`^[A-Za-z0-9._-]{1,80}/[A-Za-z0-9._-]{1,100}$`)
 
+// reTag is what a release tag may look like (v1.2.3 or 1.2.3, optionally with a suffix such as -rc1).
+var reTag = regexp.MustCompile(`^v?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(-[A-Za-z0-9.]{1,20})?$`)
+
 type relFile struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"` // agent | server | dist
@@ -72,6 +75,22 @@ type UpdateStatus struct {
 	KeyConfigured bool              `json:"keyConfigured"`
 	Manual        bool              `json:"manualAgents"`
 	Imported      string            `json:"imported,omitempty"`
+	Platform      string            `json:"platform"`
+}
+
+// canSelfUpdate says whether this build can replace its own binary and restart.
+func canSelfUpdate() bool { return runtime.GOOS == "linux" || runtime.GOOS == "windows" }
+
+// ReleaseInfo is one entry of the version picker.
+type ReleaseInfo struct {
+	Tag        string    `json:"tag"`
+	Version    string    `json:"version"`
+	Published  time.Time `json:"published"`
+	Prerelease bool      `json:"prerelease"`
+	Notes      string    `json:"notes,omitempty"`
+	HasServer  bool      `json:"hasServer"` // the release carries a signed build for this platform
+	Current    bool      `json:"current"`
+	Newer      bool      `json:"newer"`
 }
 
 type updater struct {
@@ -171,9 +190,19 @@ func (u *updater) verify(f relFile, version string, data []byte) error {
 	return nil
 }
 
-// fetch downloads the manifest of the latest release and keeps the asset URLs.
-func (u *updater) fetch(ctx context.Context, repo string) (*relManifest, map[string]string, error) {
-	b, err := u.get(ctx, u.api+"/repos/"+repo+"/releases/latest", 4<<20)
+// fetch downloads the manifest of a release (the latest one when tag is empty) and keeps the asset URLs.
+func (u *updater) fetch(ctx context.Context, repo, tag string) (*relManifest, map[string]string, error) {
+	path := "/releases/latest"
+	if tag != "" {
+		if !reTag.MatchString(tag) {
+			return nil, nil, errors.New("that is not a valid version")
+		}
+		if !strings.HasPrefix(tag, "v") {
+			tag = "v" + tag
+		}
+		path = "/releases/tags/" + tag
+	}
+	b, err := u.get(ctx, u.api+"/repos/"+repo+path, 4<<20)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -187,7 +216,7 @@ func (u *updater) fetch(ctx context.Context, repo string) (*relManifest, map[str
 	}
 	mu, ok := urls[manifestAsset]
 	if !ok {
-		return nil, nil, fmt.Errorf("the latest release has no %s asset", manifestAsset)
+		return nil, nil, fmt.Errorf("that release has no %s asset (it was not built by Helm's release workflow)", manifestAsset)
 	}
 	mb, err := u.get(ctx, mu, 1<<20)
 	if err != nil {
@@ -214,7 +243,8 @@ func (s *Server) updateStatus() UpdateStatus {
 	st.Repo, st.Current, st.Manual = set.UpdateRepo, s.cfg.Version, set.ManualAgentUpdates
 	st.AgentReleases, st.KeyConfigured = s.listReleases(), u.pub != nil
 	st.ServerNewer = st.Latest != "" && s.cfg.Version != "dev" && semverNewer(st.Latest, s.cfg.Version)
-	st.CanApply = st.ServerNewer && u.pub != nil && (runtime.GOOS == "linux")
+	st.CanApply = u.pub != nil && canSelfUpdate()
+	st.Platform = runtime.GOOS + "/" + runtime.GOARCH
 	return st
 }
 
@@ -228,7 +258,7 @@ func (s *Server) checkUpdates(ctx context.Context, importNow bool) error {
 	if u.pub == nil {
 		return errors.New("this server build has no release public key; updates are disabled")
 	}
-	m, urls, err := u.fetch(ctx, repo)
+	m, urls, err := u.fetch(ctx, repo, "")
 	u.mu.Lock()
 	u.st.Checked = time.Now().UTC()
 	if err != nil {
@@ -342,7 +372,7 @@ func (s *Server) readDistVersion(name string) (string, bool) {
 }
 
 // applyServerUpdate downloads, verifies and installs the new server binary, then restarts.
-func (s *Server) applyServerUpdate(ctx context.Context) (string, error) {
+func (s *Server) applyServerUpdate(ctx context.Context, want string) (string, error) {
 	u := s.upd
 	u.mu.Lock()
 	if u.busy {
@@ -353,8 +383,8 @@ func (s *Server) applyServerUpdate(ctx context.Context) (string, error) {
 	u.mu.Unlock()
 	defer func() { u.mu.Lock(); u.busy = false; u.mu.Unlock() }()
 
-	if runtime.GOOS != "linux" || u.exe == "" {
-		return "", errors.New("in-place server updates are supported on Linux only")
+	if !canSelfUpdate() || u.exe == "" {
+		return "", errors.New("in-place server updates are supported on Linux and Windows only")
 	}
 	if s.cfg.Version == "dev" {
 		return "", errors.New("this is a development build; it is not updated from releases")
@@ -363,12 +393,15 @@ func (s *Server) applyServerUpdate(ctx context.Context) (string, error) {
 	if repo == "" {
 		return "", errors.New("set the GitHub repository first")
 	}
-	m, urls, err := u.fetch(ctx, repo)
+	m, urls, err := u.fetch(ctx, repo, want)
 	if err != nil {
 		return "", err
 	}
-	if !semverNewer(m.Version, s.cfg.Version) {
+	if want == "" && !semverNewer(m.Version, s.cfg.Version) {
 		return "", errors.New("this server is already up to date")
+	}
+	if want != "" && parseVer(m.Version) == parseVer(s.cfg.Version) && strings.TrimPrefix(m.Version, "v") == strings.TrimPrefix(s.cfg.Version, "v") {
+		return "", errors.New("this server already runs that version")
 	}
 	var f *relFile
 	for i := range m.Files {
@@ -390,14 +423,14 @@ func (s *Server) applyServerUpdate(ctx context.Context) (string, error) {
 	if err := u.verify(*f, m.Version, data); err != nil {
 		return "", err
 	}
-	if len(data) < 1<<20 || string(data[:4]) != "\x7fELF" {
-		return "", errors.New("downloaded file is not a Linux executable")
+	if len(data) < 1<<20 || !looksExecutable(data) {
+		return "", fmt.Errorf("downloaded file is not a %s executable", runtime.GOOS)
 	}
-	// Keep the old binary for rollback, then swap atomically.
-	if old, err := os.ReadFile(u.exe); err == nil {
-		_ = os.WriteFile(u.exe+".prev", old, 0o755)
+	// A restore point first: an older version may not understand data a newer one wrote.
+	if _, err := s.makeBackup("pre-update"); err != nil {
+		s.log.Printf("updates: could not take a backup before updating: %v", err)
 	}
-	if err := writeAtomic(u.exe, data, 0o755); err != nil {
+	if err := swapBinary(u.exe, data); err != nil {
 		return "", fmt.Errorf("could not replace the server binary: %w", err)
 	}
 	// Bring the agents along while we are here (best effort; verified the same way).
@@ -407,6 +440,80 @@ func (s *Server) applyServerUpdate(ctx context.Context) (string, error) {
 		go func() { time.Sleep(1500 * time.Millisecond); u.exit() }()
 	}
 	return m.Version, nil
+}
+
+func looksExecutable(b []byte) bool {
+	if runtime.GOOS == "windows" {
+		return len(b) > 2 && b[0] == 'M' && b[1] == 'Z'
+	}
+	return len(b) > 4 && string(b[:4]) == "\x7fELF"
+}
+
+// swapBinary installs data as the running executable and keeps the old one as <exe>.prev.
+// Windows will not overwrite a running .exe but does allow renaming it, so the old file is moved aside first.
+func swapBinary(exe string, data []byte) error {
+	prev := exe + ".prev"
+	_ = os.Remove(prev)
+	if err := os.Rename(exe, prev); err != nil {
+		return err
+	}
+	if err := writeAtomic(exe, data, 0o755); err != nil {
+		_ = os.Rename(prev, exe) // put the old one back
+		return err
+	}
+	return nil
+}
+
+// listGitHubReleases returns the releases of the repository that Helm's workflow built, newest first.
+func (s *Server) listGitHubReleases(ctx context.Context) ([]ReleaseInfo, error) {
+	repo := s.db.settings().UpdateRepo
+	if repo == "" {
+		return nil, errors.New("set the GitHub repository first")
+	}
+	b, err := s.upd.get(ctx, s.upd.api+"/repos/"+repo+"/releases?per_page=30", 8<<20)
+	if err != nil {
+		return nil, err
+	}
+	var raw []struct {
+		TagName    string    `json:"tag_name"`
+		Prerelease bool      `json:"prerelease"`
+		Draft      bool      `json:"draft"`
+		Published  time.Time `json:"published_at"`
+		Body       string    `json:"body"`
+		Assets     []struct {
+			Name string `json:"name"`
+		} `json:"assets"`
+	}
+	if json.Unmarshal(b, &raw) != nil {
+		return nil, errors.New("unexpected answer from GitHub")
+	}
+	want := "helm-server-" + runtime.GOOS + "-" + runtime.GOARCH
+	if runtime.GOOS == "windows" {
+		want += ".exe"
+	}
+	out := []ReleaseInfo{}
+	for _, r := range raw {
+		if r.Draft || !reTag.MatchString(r.TagName) {
+			continue
+		}
+		ri := ReleaseInfo{Tag: r.TagName, Version: strings.TrimPrefix(r.TagName, "v"), Published: r.Published, Prerelease: r.Prerelease, Notes: clip(r.Body, 6000)}
+		hasManifest := false
+		for _, a := range r.Assets {
+			if a.Name == want {
+				ri.HasServer = true
+			}
+			if a.Name == manifestAsset {
+				hasManifest = true
+			}
+		}
+		if !hasManifest {
+			continue
+		}
+		ri.Current = ri.Version == strings.TrimPrefix(s.cfg.Version, "v")
+		ri.Newer = semverNewer(ri.Version, s.cfg.Version)
+		out = append(out, ri)
+	}
+	return out, nil
 }
 
 // autoUpdateCheck runs periodically.
@@ -447,13 +554,32 @@ func (s *Server) handleUpdateAgents(w http.ResponseWriter, r *http.Request, sess
 	writeJSON(w, 200, s.updateStatus())
 }
 
+func (s *Server) handleUpdateReleases(w http.ResponseWriter, r *http.Request, sess *session) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
+	defer cancel()
+	list, err := s.listGitHubReleases(ctx)
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"releases": list, "current": s.cfg.Version, "platform": runtime.GOOS + "/" + runtime.GOARCH})
+}
+
 func (s *Server) handleUpdateServer(w http.ResponseWriter, r *http.Request, sess *session) {
 	if !s.needStepUp(w, sess) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Minute)
 	defer cancel()
-	v, err := s.applyServerUpdate(ctx)
+	var req struct {
+		Version string `json:"version"`
+	}
+	if r.ContentLength > 0 {
+		if !readJSON(w, r, &req) {
+			return
+		}
+	}
+	v, err := s.applyServerUpdate(ctx, strings.TrimSpace(req.Version))
 	if err != nil {
 		writeErr(w, 502, err.Error())
 		return

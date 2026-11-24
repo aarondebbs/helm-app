@@ -287,15 +287,31 @@ html[data-theme="dark"] .toast { background: #1d2b29; }
 
 /* ---------- sign-in ---------- */
 .loginpage { min-height: 100vh; display: grid; grid-template-columns: minmax(340px, 42%) 1fr; background: var(--bg); }
-.loginhero { color: #cfdcd9; padding: 48px 56px 36px; display: flex; flex-direction: column; justify-content: space-between; background: var(--ink); }
+.loginhero { color: #cfdcd9; padding: 40px 52px 28px; display: flex; flex-direction: column; gap: 22px; background: var(--ink); min-height: 100vh; overflow: hidden; }
 .loginhero .brand { padding: 0; height: auto; border: 0; font-size: 1.6rem; color: #fff; } .loginhero .brand span { color: #fff; } .loginhero .brand svg { width: 30px; height: 30px; color: #5fd0c4; }
-.loginhero h2 { color: #fff; font-size: 2.3rem; font-weight: 600; line-height: 1.12; max-width: 13em; margin: 0 0 26px; }
-.loginhero ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; max-width: 30em; }
-.loginhero li { display: flex; gap: 12px; align-items: flex-start; } .loginhero li .ico { width: 18px; height: 18px; color: #5fd0c4; margin-top: 3px; }
-.loginhero small { color: #82968f; }
+.loginhero h2 { color: #fff; font-size: 2.3rem; font-weight: 600; line-height: 1.12; max-width: 13em; margin: 0 0 14px; }
+.loginhero .herotext p { margin: 0; max-width: 30em; color: #aebfba; line-height: 1.55; }
+.fleetbox { flex: 1; min-height: 240px; position: relative; margin: 0 -52px; }
+.fleetcanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.herofoot small { color: #6f847d; display: block; margin-top: 10px; }
+.fleetlog { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; min-height: 92px; justify-content: flex-end; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.fleetlog li { color: #9fb3ad; animation: logIn .5s ease-out; padding-left: 14px; position: relative; }
+.fleetlog li::before { content: ""; position: absolute; left: 0; top: .55em; width: 6px; height: 6px; border-radius: 1px; background: #5fd0c4; }
+.fleetlog li.bad { color: #ecc86c; } .fleetlog li.bad::before { background: #e5b94e; }
+.fleetlog li:nth-last-child(n+4) { opacity: .35; } .fleetlog li:nth-last-child(3) { opacity: .55; } .fleetlog li:nth-last-child(2) { opacity: .8; }
+@keyframes logIn { from { transform: translateY(6px); opacity: 0; } }
 .loginform { display: grid; place-items: center; padding: 28px; }
 .login { width: min(380px, 100%); } .login h1 { margin-bottom: 4px; } .login .tagline { color: var(--muted); margin-bottom: 20px; }
 .login .panel { padding: 24px; }
+.login h1 { font-size: 1.9rem; letter-spacing: -.01em; }
+.pwwrap { position: relative; display: block; } .pwwrap input { width: 100%; padding-right: 40px; }
+.eye { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); border: 0; background: none; padding: 6px 8px; color: var(--muted); box-shadow: none; }
+.eye .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; } .eye:hover, .eye.on { color: var(--text); background: none; }
+.capsnote { font-size: 13px; color: var(--n-warn); margin-top: 4px; }
+.login .panel.shake { animation: shake .35s ease-in-out; }
+@keyframes shake { 20% { transform: translateX(-7px); } 45% { transform: translateX(6px); } 70% { transform: translateX(-3px); } }
+button.busy { position: relative; color: transparent; } button.busy::after { content: ""; position: absolute; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .login .panel.shake, .fleetlog li { animation: none; } }
 .themefloat { position: absolute; top: 12px; right: 12px; }
 
 @media (max-width: 960px) { .loginpage { grid-template-columns: 1fr; } .loginhero { display: none; } .statement { grid-template-columns: 1fr; gap: 22px; } }
@@ -321,3 +337,15 @@ tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--panel2)
 /* installed app: respect the notch and home bar */
 @media (display-mode: standalone) { body { padding-bottom: env(safe-area-inset-bottom); } .topbar { padding-top: env(safe-area-inset-top); height: calc(52px + env(safe-area-inset-top)); } }
 html { -webkit-text-size-adjust: 100%; } button, a { -webkit-tap-highlight-color: transparent; }
+
+/* version picker */
+.releases { display: flex; flex-direction: column; border: 1px solid var(--line2); }
+details.release { border-top: 1px solid var(--line); background: var(--panel); }
+details.release:first-child { border-top: 0; }
+details.release > summary { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; list-style: none; flex-wrap: wrap; }
+details.release > summary::-webkit-details-marker { display: none; }
+details.release > summary::before { content: "▸"; color: var(--muted); width: 12px; }
+details.release[open] > summary::before { content: "▾"; }
+details.release > summary .grow { flex: 1; }
+details.release[open] > summary { background: var(--panel2); }
+.relnotes { margin: 0; padding: 12px 16px 14px 36px; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.55; color: var(--text2); max-height: 260px; overflow: auto; }

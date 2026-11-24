@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod, cache: false }
       - uses: actions/download-artifact@v4
@@ -56,8 +57,19 @@ jobs:
           HELM_RELEASE_KEY: ${{ secrets.HELM_RELEASE_KEY }}
       - name: Install MSI tooling
         run: sudo apt-get update -qq && sudo apt-get install -y -qq msitools wixl
+      - name: Release notes
+        run: |
+          # What changed since the previous release: the commit messages in between, newest first.
+          PREV=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$TAG" | head -n1 || true)
+          RANGE=${PREV:+$PREV..}HEAD
+          {
+            git log "$RANGE" --no-merges --format='%B' | grep -v -e '^Co-Authored-By:' -e '^Claude-Session:' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' | cat -s
+          } > RELEASE_NOTES.md
+          [ -s RELEASE_NOTES.md ] || echo "Helm ${TAG#v}" > RELEASE_NOTES.md
       - name: Build
-        run: ./build.sh "${TAG#v}"
+        env:
+          RELEASE_NOTES_FILE: RELEASE_NOTES.md
+        run: RELEASE_NOTES="$(head -c 1500 RELEASE_NOTES.md)" ./build.sh "${TAG#v}"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,5 +77,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/release/* out/SHA256SUMS --clobber
           else
-            gh release create "$TAG" out/release/* out/SHA256SUMS --title "Helm ${TAG#v}" --generate-notes
+            gh release create "$TAG" out/release/* out/SHA256SUMS --title "Helm ${TAG#v}" --notes-file RELEASE_NOTES.md
           fi

@@ -207,6 +207,7 @@ async function getDevices(force) {
 
 // ---------- icons ----------
 const ICON = {
+  eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6z',
   dash: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
   devices: 'M4 5h16v11H4zM8 21h8M12 16v5',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
@@ -457,11 +458,102 @@ function shell(active, content) {
 }
 
 // ---------- login ----------
+// The sign-in hero: a small illustrated fleet. Machines "dial out" to the server (the hub), one now and then needs a patch
+// and gets it. It is a drawing, not live data, and it says so. It stops by itself when the login page is gone.
+function fleetField(canvas, ticker) {
+  const ctx = canvas.getContext('2d');
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NAMES = ['FRONT-DESK', 'SRV-FILE02', 'ACCOUNTS-4', 'DEV-MAC-07', 'WAREHOUSE-KIOSK', 'SRV-DC01', 'RECEPTION', 'BOARDROOM', 'PRINT-SRV', 'SALES-12', 'CAD-WS-3', 'LAB-PC-09', 'FINANCE-2', 'HR-LAPTOP', 'SRV-BACKUP', 'OFFICE-MAC', 'PAYROLL-1', 'KIOSK-LOBBY', 'SRV-WEB01', 'DESIGN-MAC-2'];
+  const SAYS = [n => n + ' checked in', n => n + ' · patches up to date', n => n + ' · disk 41% used', n => n + ' · Defender on', n => n + ' · 2 apps updated', n => n + ' · screen session ended'];
+  const rng = (seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; })(7);
+  const nodes = Array.from({ length: 38 }, (_, i) => ({ name: i < NAMES.length ? NAMES[i] : NAMES[i % NAMES.length].replace(/-?\d+$/, '') + '-' + (10 + i), x: 0, y: 0, u: rng(), v: rng(), depth: .3 + rng() * .7, period: 3.2 + rng() * 3, phase: rng() * 6, state: 'ok', until: 0, flash: 0 }));
+  const packets = [], rings = [];
+  let W = 0, H = 0, hub = { x: 0, y: 0 }, raf = 0, mx = .5, my = .5, nextEv = 0.8, nextWarn = 5, alarm = 0, last = performance.now() / 1000;
+  const say = (text, bad) => {
+    const li = h('li', { class: bad ? 'bad' : '' }, text);
+    ticker.append(li);
+    while (ticker.children.length > 4) ticker.firstChild.remove();
+  };
+  const layout = () => {
+    const r = canvas.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2);
+    W = Math.max(280, r.width); H = Math.max(200, r.height);
+    canvas.width = W * d; canvas.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0);
+    hub = { x: W * .5, y: H * .84 };
+    // Jittered grid so the field never looks tiled: columns × rows, each node wobbles inside its cell.
+    const cols = Math.max(6, Math.round(W / 62)), rows = Math.ceil(nodes.length / cols);
+    nodes.forEach((n, i) => {
+      const c = i % cols, rw = Math.floor(i / cols);
+      n.x = (c + .15 + n.u * .7) / cols * (W - 40) + 20;
+      n.y = (rw + .15 + n.v * .7) / rows * (H * .62) + H * .05;
+    });
+  };
+  const pick = want => { const pool = nodes.filter(n => n.state === want); return pool[Math.floor(rng() * pool.length)]; };
+  const send = (n, kind) => packets.push({ n, p: 0, kind });
+  const frame = now => {
+    if (!canvas.isConnected) return;
+    const t = now / 1000, dt = Math.min(.1, t - last); last = t;
+    if (t > nextEv) { const n = pick('ok'); if (n) send(n, 'hello'); nextEv = t + .9 + rng() * 1.6; }
+    if (t > nextWarn) { const n = pick('ok'); if (n) { n.state = 'warn'; n.until = t + 5; say(n.name + ' · 3 updates waiting', true); } nextWarn = t + 9 + rng() * 5; }
+    nodes.forEach(n => { if (n.state === 'warn' && t > n.until) { n.state = 'patching'; send(n, 'patch'); } });
+    ctx.clearRect(0, 0, W, H);
+    const px = (mx - .5) * 16, py = (my - .5) * 10;
+    ctx.lineWidth = 1;
+    nodes.forEach(n => { n.sx = n.x + px * n.depth; n.sy = n.y + py * n.depth; });
+    ctx.strokeStyle = 'rgba(95,208,196,.07)';
+    ctx.beginPath(); nodes.forEach(n => { ctx.moveTo(n.sx, n.sy); ctx.lineTo(hub.x, hub.y); }); ctx.stroke();
+    nodes.forEach(n => {
+      const beat = Math.exp(-(((t + n.phase) % n.period) / .45));
+      const col = n.state === 'warn' ? '229,185,78' : '95,208,196';
+      const a = (n.state === 'warn' ? .6 + .4 * Math.abs(Math.sin(t * 3)) : .42 + .55 * beat) + n.flash;
+      ctx.fillStyle = 'rgba(' + col + ',' + Math.min(1, a) + ')';
+      const s = 8 + n.depth * 3;
+      ctx.beginPath(); ctx.roundRect(n.sx - s / 2, n.sy - s / 2, s, s, 2); ctx.fill();
+      n.flash = Math.max(0, n.flash - dt * 1.6);
+    });
+    for (let i = packets.length - 1; i >= 0; i--) {
+      const k = packets[i], n = k.n; k.p += dt / 1.1;
+      const e = k.p * k.p * (3 - 2 * k.p), x = n.sx + (hub.x - n.sx) * e, y = n.sy + (hub.y - n.sy) * e;
+      ctx.fillStyle = k.kind === 'patch' ? '#e5b94e' : '#9be8df';
+      ctx.beginPath(); ctx.arc(x, y, 2.6, 0, 7); ctx.fill();
+      if (k.p >= 1) {
+        packets.splice(i, 1); rings.push({ x: hub.x, y: hub.y, r: 4, a: .8, c: '95,208,196' });
+        if (k.kind === 'patch') { n.state = 'ok'; n.flash = .6; say(n.name + ' · patched, restart scheduled'); }
+        else { n.flash = .5; say(SAYS[Math.floor(rng() * SAYS.length)](n.name)); }
+      }
+    }
+    for (let i = rings.length - 1; i >= 0; i--) {
+      const r = rings[i]; r.r += dt * 46; r.a -= dt * .9;
+      if (r.a <= 0) { rings.splice(i, 1); continue; }
+      ctx.strokeStyle = 'rgba(' + r.c + ',' + r.a + ')'; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.stroke();
+    }
+    alarm = Math.max(0, alarm - dt);
+    ctx.fillStyle = alarm > 0 ? '#e8665a' : '#5fd0c4';
+    ctx.beginPath(); ctx.arc(hub.x, hub.y, 6, 0, 7); ctx.fill();
+    ctx.strokeStyle = alarm > 0 ? 'rgba(232,102,90,.55)' : 'rgba(95,208,196,.4)'; ctx.beginPath(); ctx.arc(hub.x, hub.y, 11 + Math.sin(t * 2) * 1.2, 0, 7); ctx.stroke();
+    if (!calm) raf = requestAnimationFrame(frame);
+  };
+  const ro = new ResizeObserver(layout); ro.observe(canvas); layout();
+  const move = e => { const r = canvas.getBoundingClientRect(); mx = (e.clientX - r.left) / r.width; my = (e.clientY - r.top) / r.height; };
+  addEventListener('pointermove', move, { passive: true });
+  if (calm) { ['FRONT-DESK · patches up to date', 'SRV-FILE02 · disk 41% used', 'RECEPTION checked in'].forEach(x => say(x)); frame(performance.now()); }
+  else { say('SRV-DC01 checked in'); raf = requestAnimationFrame(frame); }
+  return {
+    deny() { alarm = 1.1; rings.push({ x: hub.x, y: hub.y, r: 6, a: 1, c: '232,102,90' }); },
+    stop() { cancelAnimationFrame(raf); ro.disconnect(); removeEventListener('pointermove', move); },
+  };
+}
+
 function showLogin(msg) {
   cleanups.forEach(f => { try { f(); } catch (e) { /* ignore */ } }); cleanups = [];
   routeToken++; S.csrf = ''; S.devices = null;
   const user = h('input', { type: 'text', autocomplete: 'username', value: 'admin', required: true });
   const pw = h('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const eye = h('button', { type: 'button', class: 'eye', title: 'Show password', 'aria-label': 'Show password', onclick: () => {
+    const show = pw.type === 'password'; pw.type = show ? 'text' : 'password'; eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); eye.classList.toggle('on', show); pw.focus();
+  } }, icon('eye'));
+  const caps = h('div', { class: 'capsnote hidden' }, 'Caps Lock is on');
+  pw.addEventListener('keydown', e => caps.classList.toggle('hidden', !(e.getModifierState && e.getModifierState('CapsLock'))));
+  pw.addEventListener('blur', () => caps.classList.add('hidden'));
   const code = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', maxLength: 6, placeholder: '6-digit code', required: true });
   const codeField = h('label', { class: 'field' }, h('span', null, 'Authenticator code'), code);
   const gbox = h('div', { class: 'stack', style: { marginBottom: '18px' } });
@@ -472,33 +564,44 @@ function showLogin(msg) {
   }).catch(() => { gbox.style.display = 'none'; });
   const ssoErr = new URLSearchParams(location.search).get('sso_error');
   if (ssoErr) { msg = ssoErr; history.replaceState(null, '', location.pathname + location.hash); }
-  const err = h('div', { class: 'notice bad hidden' });
+  const err = h('div', { class: 'notice bad hidden', role: 'alert' });
+  const card = h('div', { class: 'panel' });
   const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center', padding: '10px' } }, 'Sign in');
+  let fx = null;
+  const fail = text => {
+    err.textContent = text; err.classList.remove('hidden'); code.value = '';
+    card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); if (fx) fx.deny();
+  };
   const form = h('form', { class: 'stack', onsubmit: async e => {
-    e.preventDefault(); btn.disabled = true; err.classList.add('hidden');
+    e.preventDefault(); btn.disabled = true; btn.classList.add('busy'); err.classList.add('hidden');
     try {
       const { res, data } = await rawFetch('POST', '/api/login', { user: user.value, password: pw.value, code: code.value });
       if (!res.ok) throw new Error((data && data.error) || 'Sign-in failed');
+      if (fx) fx.stop();
       S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; document.documentElement.dataset.role = S.role; boot2();
-    } catch (ex) { err.textContent = ex.message; err.classList.remove('hidden'); code.value = ''; }
-    finally { btn.disabled = false; }
+    } catch (ex) { fail(ex.message); }
+    finally { btn.disabled = false; btn.classList.remove('busy'); }
   } },
     h('label', { class: 'field' }, h('span', null, 'User'), user),
-    h('label', { class: 'field' }, h('span', null, 'Password'), pw),
+    h('label', { class: 'field' }, h('span', null, 'Password'), h('span', { class: 'pwwrap' }, pw, eye), caps),
     codeField,
     err, btn);
-  if (msg) { err.textContent = msg; err.classList.remove('hidden'); }
-  const point = (t, d) => h('li', null, icon('check'), h('div', null, h('b', { style: { color: '#fff' } }, t), h('div', null, d)));
+  card.append(gbox, form);
+  const hr = new Date().getHours(), hello = hr < 5 ? 'Working late' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  const canvas = h('canvas', { class: 'fleetcanvas', 'aria-hidden': 'true' });
+  const ticker = h('ul', { class: 'fleetlog', 'aria-hidden': 'true' });
   clear($('#app')).append(h('div', { class: 'loginpage' },
     h('div', { class: 'loginhero' },
       h('div', { class: 'brand' }, LOGO(), h('span', null, 'Helm')),
-      h('div', null, h('h2', null, 'Every PC, Mac and server in one console.'),
-        h('ul', null, point('Security at a glance', 'Vulnerability scanning, patch status and a clear score for every machine.'),
-          point('Manage remotely', 'Terminal, files, services, updates and software deployment without a VPN.'),
-          point('Self-hosted', 'Your server, your data. Sign-in is protected by a strong password and two-step verification.'))),
-      h('small', null, 'Helm management console')),
+      h('div', { class: 'herotext' }, h('h2', null, 'Every PC, Mac and server in one console.'),
+        h('p', null, 'Machines call in to your own server. You patch, fix and watch them from here, with no VPN in between.')),
+      h('div', { class: 'fleetbox' }, canvas),
+      h('div', { class: 'herofoot' }, ticker, h('small', null, 'Illustration of a fleet. Nothing here is live.'))),
     h('div', { class: 'loginform', style: { position: 'relative' } }, h('div', { class: 'themefloat' }, themeButton()),
-      h('div', { class: 'login' }, h('h1', null, 'Sign in'), h('div', { class: 'tagline' }, 'Use your administrator account'), h('div', { class: 'panel' }, gbox, form)))));
+      h('div', { class: 'login' }, h('h1', null, hello), h('div', { class: 'tagline' }, 'Sign in to your Helm console'), card))));
+  fx = fleetField(canvas, ticker);
+  cleanups.push(() => fx && fx.stop());
+  if (msg) fail(msg);
   user.value ? pw.focus() : user.focus();
 }
 

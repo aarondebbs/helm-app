@@ -64,7 +64,14 @@ func serveRelease(t *testing.T, r *fakeRelease) *httptest.Server {
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
-		case req.URL.Path == "/repos/me/helm/releases/latest":
+		case req.URL.Path == "/repos/me/helm/releases":
+			assets := []map[string]string{{"name": manifestAsset}, {"name": "helm-server-" + runtime.GOOS + "-" + runtime.GOARCH + map[bool]string{true: ".exe"}[runtime.GOOS == "windows"]}}
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"tag_name": "v" + r.version, "published_at": "2026-11-24T10:00:00Z", "body": "Fixes and things", "assets": assets},
+				{"tag_name": "v0.1.0", "published_at": "2026-01-01T10:00:00Z", "body": "old", "assets": []map[string]string{}},
+				{"tag_name": "v0.0.9", "draft": true, "assets": assets},
+			})
+		case req.URL.Path == "/repos/me/helm/releases/latest" || req.URL.Path == "/repos/me/helm/releases/tags/v"+r.version:
 			assets := []map[string]string{{"name": manifestAsset, "browser_download_url": srv.URL + "/a/" + manifestAsset}}
 			for n := range r.files {
 				assets = append(assets, map[string]string{"name": n, "browser_download_url": srv.URL + "/a/" + n})
@@ -168,7 +175,7 @@ func TestCloudUpdateServerBinary(t *testing.T) {
 	s.upd.exe = exe
 	var exited atomic.Bool
 	s.upd.exit = func() { exited.Store(true) }
-	v, err := s.applyServerUpdate(t.Context())
+	v, err := s.applyServerUpdate(t.Context(), "")
 	if err != nil || v != "0.4.0" {
 		t.Fatalf("apply: %v %v", v, err)
 	}
@@ -183,11 +190,11 @@ func TestCloudUpdateServerBinary(t *testing.T) {
 	}
 	// Up-to-date servers and dev builds refuse.
 	s.cfg.Version = "0.4.0"
-	if _, err := s.applyServerUpdate(t.Context()); err == nil {
+	if _, err := s.applyServerUpdate(t.Context(), ""); err == nil {
 		t.Error("updated to the same version")
 	}
 	s.cfg.Version = "dev"
-	if _, err := s.applyServerUpdate(t.Context()); err == nil {
+	if _, err := s.applyServerUpdate(t.Context(), ""); err == nil {
 		t.Error("dev build accepted an update")
 	}
 	for i := 0; i < 40 && !exited.Load(); i++ {
@@ -199,3 +206,36 @@ func TestCloudUpdateServerBinary(t *testing.T) {
 }
 
 func sleep50() { time.Sleep(50 * time.Millisecond) }
+
+func TestPickAVersionAndSeeItsLog(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	srv := serveRelease(t, buildFakeRelease(t, priv, "0.4.0", false))
+	s := updServer(t, srv.URL, pub, "0.5.0") // running a NEWER version than the release we pick
+	list, err := s.listGitHubReleases(t.Context())
+	if err != nil || len(list) != 1 || list[0].Tag != "v0.4.0" || !list[0].HasServer || list[0].Newer || list[0].Notes != "Fixes and things" {
+		t.Fatalf("release list: %+v %v", list, err)
+	}
+	if _, _, err := s.upd.fetch(t.Context(), "me/helm", "../../etc"); err == nil {
+		t.Fatal("a path was accepted as a version")
+	}
+	// "latest" refuses to go backwards, a chosen version is allowed to (rollback).
+	exe := filepath.Join(t.TempDir(), "helm-server")
+	os.WriteFile(exe, []byte("current"), 0o755)
+	s.upd.exe, s.upd.exit = exe, func() {}
+	if _, err := s.applyServerUpdate(t.Context(), ""); err == nil {
+		t.Fatal("latest moved a newer server backwards")
+	}
+	v, err := s.applyServerUpdate(t.Context(), "0.4.0")
+	if err != nil || v != "0.4.0" {
+		t.Fatalf("rollback: %v %v", v, err)
+	}
+	if b, _ := os.ReadFile(exe + ".prev"); string(b) != "current" {
+		t.Error("the version we left was not kept")
+	}
+	if _, err := s.applyServerUpdate(t.Context(), "0.5.0"); err == nil {
+		t.Error("re-installing the running version was accepted")
+	}
+}

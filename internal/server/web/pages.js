@@ -448,10 +448,37 @@ async function viewSettings() {
       h('div', { class: 'row' },
         actionButton('Check now', async () => { await save(true); await api('POST', '/api/update/check', {}); drawUpd(); }),
         actionButton('Update PCs now', async () => { await save(true); await api('POST', '/api/update/agents', {}); toast('Agent releases imported. PCs update themselves within minutes.', 'ok'); drawUpd(); }),
-        u.canApply ? actionButton('Update this server to ' + u.latest, async () => {
+        u.canApply && u.serverNewer ? actionButton('Update this server to ' + u.latest, async () => {
           if (!(await confirmDialog('Install ' + u.latest + ' and restart the server? PCs reconnect automatically in a few seconds.', 'Update server'))) return;
           await save(true); const r = await api('POST', '/api/update/server', {}); toast('Installed ' + r.version + '. Restarting…', 'ok'); setTimeout(() => location.reload(), 6000);
-        }, 'primary') : null));
+        }, 'primary') : null),
+      versionsBox(u));
+  };
+  // Every release of the repository with its release log; any version can be installed (or rolled back to).
+  const versionsBox = (u) => {
+    const box = h('div', { class: 'stack' });
+    const load = async () => {
+      clear(box).append(h('span', { class: 'spinner' }));
+      let r; try { r = await api('GET', '/api/update/releases'); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
+      const when = (t) => t ? new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const rows = r.releases.map((x, i) => {
+        const tags = [x.current ? h('span', { class: 'badge ok' }, 'running') : null, i === 0 && !x.prerelease ? h('span', { class: 'badge info' }, 'latest') : null,
+          x.prerelease ? h('span', { class: 'badge warning' }, 'pre-release') : null, !x.hasServer ? h('span', { class: 'badge' }, 'no ' + r.platform + ' build') : null];
+        const can = u.canApply && !x.current && x.hasServer;
+        const btn = can ? actionButton(x.newer ? 'Install' : 'Roll back to this', async () => {
+          const msg = x.newer ? 'Install ' + x.tag + ' and restart the server? PCs reconnect automatically in a few seconds.'
+            : x.tag + ' is older than the version you run. A backup is taken first, but an older version may not understand newer data. Go back to ' + x.tag + '?';
+          if (!(await confirmDialog(msg, x.newer ? 'Install version' : 'Roll back'))) return;
+          const res = await api('POST', '/api/update/server', { version: x.tag });
+          toast('Installed ' + res.version + '. Restarting…', 'ok'); setTimeout(() => location.reload(), 6000);
+        }, x.newer ? 'primary' : '') : null;
+        return h('details', { class: 'release' },
+          h('summary', null, h('b', null, x.tag), h('span', { class: 'muted' }, when(x.published)), ...tags, h('span', { class: 'grow' }), btn),
+          h('pre', { class: 'relnotes' }, x.notes || 'No release log was written for this version.'));
+      });
+      clear(box).append(rows.length ? h('div', { class: 'releases' }, ...rows) : h('div', { class: 'muted' }, 'No releases with a Helm manifest were found in this repository.'));
+    };
+    return h('details', { class: 'fold' }, h('summary', { onclick: (e) => { if (!box.dataset.loaded) { box.dataset.loaded = '1'; load(); } } }, 'Versions and release logs'), h('div', { style: { padding: '12px 18px 16px' } }, box));
   };
   setTimeout(drawUpd, 0);
   const save = async (quiet) => {

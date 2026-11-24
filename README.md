@@ -18,6 +18,68 @@ processes (end) · services (start/stop/restart/startup type) · event logs · p
 remote screen **in the browser** (works on Home and Pro, sees the sign-in screen) · RDP **tunnel** for a native client
 (Pro/Enterprise only) · Wake-on-LAN via another PC on the same LAN · bulk actions · audit log · agent self-update (signed).
 
+## Install from GitHub
+
+Every release at <https://github.com/aarondebbs/helm-app/releases> carries the server for Windows and Linux, the agents and
+installers, a signed `helm-release.json`, and a release log (what changed). You pick the version.
+
+### Windows Server (2016 or newer) or Windows 10/11
+
+Open **PowerShell as Administrator**:
+
+```powershell
+Invoke-WebRequest https://github.com/aarondebbs/helm-app/releases/latest/download/Install-HelmServer.ps1 -OutFile Install-HelmServer.ps1
+powershell -ExecutionPolicy Bypass -File .\Install-HelmServer.ps1
+```
+
+The script lists the releases with their dates and a line of the release log, you type the number of the version you want
+(Enter = newest), and it then:
+
+1. downloads that version's `helm-server-windows-<amd64|arm64>.exe` and checks it against the release checksum,
+2. installs it to `C:\Program Files\Helm`, keeps data in `C:\ProgramData\Helm`, locked to Administrators and the service,
+3. creates the **HelmServer** Windows service (starts at boot, restarts itself if it stops),
+4. asks you for an administrator password and prints the authenticator key to add to your app,
+5. starts the server on `http://127.0.0.1:8787`.
+
+Options: `-Version v0.10.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
+(also opens the firewall) · `-Repo owner/name` (your own fork) · `-IncludePrerelease` · `-Uninstall` (`-PurgeData` deletes data too).
+Run it again any time to switch version; your data stays.
+
+To publish it on the internet over HTTPS, install Tailscale on the server and run `tailscale funnel --bg 8787`.
+
+### Raspberry Pi / Linux
+
+```bash
+sudo mkdir -p /opt/helm /var/lib/helm
+# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.10.0 and arm64/amd64 as needed)
+sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.10.0/helm-server-linux-arm64
+sudo chmod 0755 /opt/helm/helm-server && sudo ln -sf /opt/helm/helm-server /usr/local/bin/helm-server
+sudo curl -fL -o /etc/systemd/system/helm-server.service https://raw.githubusercontent.com/aarondebbs/helm-app/main/deploy/helm-server.service
+sudo useradd --system --home /var/lib/helm --shell /usr/sbin/nologin helm; sudo chown -R helm:helm /opt/helm /var/lib/helm
+sudo -u helm helm-server init-admin -data /var/lib/helm     # creates the admin and shows the authenticator key
+sudo systemctl daemon-reload && sudo systemctl enable --now helm-server
+```
+
+### Updates and choosing a version later
+
+In the console open **Settings, Updates**. Enter the repository (`aarondebbs/helm-app` is filled in by the Windows installer),
+then open **Versions and release logs**: every release is listed with its log, and each has **Install** (newer) or
+**Roll back to this** (older). A backup is taken first, the file is verified against the release signature, and the server
+restarts by itself (PCs reconnect within seconds). PCs follow with their own signed self-update.
+
+Rolling back is safe for the program but an older version may not understand data a newer one saved; restore the
+automatic backup (Settings, Backups) if something looks wrong.
+
+### Publishing your own releases
+
+Fork the repository, add the contents of `keys/release.key` as the repository secret `HELM_RELEASE_KEY` (create one with
+`go run ./cmd/helm-sign keygen -out keys/release.key`; keep it private), then run **Actions, release** with a tag such as
+`v0.10.1`, or push that tag. The workflow tests, builds everything, writes the release log from your commit messages since the
+previous tag, and publishes the release. Use your own `owner/name` for `-Repo` and in Settings.
+
+**Not yet verified on real machines:** the Windows Server service and `Install-HelmServer.ps1` were built and unit-tested but
+not run on a Windows Server. Try it on a test machine first and report anything odd.
+
 ## Build
 
 Needs Go ≥ 1.24, `wixl`/`msibuild` (package `msitools`) for the MSI.

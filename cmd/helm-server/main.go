@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -62,18 +63,29 @@ func main() {
 
 func serve(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	data := fs.String("data", "/var/lib/helm", "data directory")
+	data := fs.String("data", defaultDataDir(), "data directory")
 	listen := fs.String("listen", "127.0.0.1:8787", "listen address (keep on loopback when using Tailscale Funnel)")
 	rdp := fs.String("rdp-bind", "127.0.0.1", "address RDP tunnel listeners bind to (use the Pi's Tailscale IP to reach them from your tailnet)")
 	dev := fs.Bool("dev", false, "development mode: allow plain-HTTP cookies")
+	repo := fs.String("update-repo", "", "GitHub repository (owner/name) to read releases from when none is set in the portal yet")
 	trust := fs.Bool("trust-proxy", true, "trust X-Forwarded-For from a loopback reverse proxy such as Tailscale Funnel")
 	_ = fs.Parse(args)
-	s, err := server.New(server.Config{DataDir: *data, Listen: *listen, Dev: *dev, TrustProxy: *trust, RDPBind: *rdp, Version: version, UpdatePubKey: updatePubKey})
+	s, err := server.New(server.Config{DataDir: *data, Listen: *listen, Dev: *dev, TrustProxy: *trust, RDPBind: *rdp, DefaultRepo: *repo, Version: version, UpdatePubKey: updatePubKey})
 	if err != nil {
 		return err
 	}
 	if s.Store().HasAdmin() == false {
 		fmt.Fprintln(os.Stderr, "warning: no administrator exists yet. Run: helm-server init-admin -data", *data)
+	}
+	// Under the Windows Service Control Manager the stop request arrives through it; otherwise by signal.
+	run := func(ctx context.Context) {
+		go func() { <-ctx.Done(); s.Close() }()
+		_ = s.Run()
+	}
+	if err := runService("HelmServer", run); err == nil {
+		return nil
+	} else if !errors.Is(err, errNotService) {
+		return err
 	}
 	go func() {
 		c := make(chan os.Signal, 1)
@@ -125,7 +137,7 @@ func newPassword() (string, error) {
 
 func openStore(args []string, name string) (*server.Store, *flag.FlagSet, *string, error) {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
-	data := fs.String("data", "/var/lib/helm", "data directory")
+	data := fs.String("data", defaultDataDir(), "data directory")
 	user := fs.String("user", "admin", "administrator user name")
 	_ = fs.Parse(args)
 	st, err := server.OpenStore(*data)

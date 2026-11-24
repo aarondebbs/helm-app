@@ -24,12 +24,13 @@ func init() { _ = mime.AddExtensionType(".woff2", "font/woff2") }
 
 // Config controls the server.
 type Config struct {
-	DataDir    string
-	Listen     string // e.g. 127.0.0.1:8787
-	Dev        bool   // allow insecure cookies (plain HTTP on localhost)
-	TrustProxy bool   // trust X-Forwarded-For from a loopback proxy (Tailscale Funnel)
-	RDPBind    string // address the RDP tunnel listeners bind to (default 127.0.0.1)
-	Version    string
+	DataDir     string
+	Listen      string // e.g. 127.0.0.1:8787
+	Dev         bool   // allow insecure cookies (plain HTTP on localhost)
+	TrustProxy  bool   // trust X-Forwarded-For from a loopback proxy (Tailscale Funnel)
+	DefaultRepo string // GitHub owner/name used for updates until one is saved in the portal
+	RDPBind     string // address the RDP tunnel listeners bind to (default 127.0.0.1)
+	Version     string
 	// UpdatePubKey is the hex ed25519 release key (compiled in); GitHubAPI overrides the API base in tests.
 	UpdatePubKey string
 	GitHubAPI    string
@@ -72,6 +73,9 @@ func New(cfg Config) (*Server, error) {
 	db, err := OpenDB(cfg.DataDir)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.DefaultRepo != "" && reRepo.MatchString(cfg.DefaultRepo) && db.settings().UpdateRepo == "" {
+		db.update(func(d *dbData) { d.Settings.UpdateRepo = cfg.DefaultRepo })
 	}
 	s := &Server{
 		cfg:       cfg,
@@ -197,6 +201,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/account/2fa/disable", s.authed(s.handle2faDisable, true))
 	mux.HandleFunc("GET /api/auth/config", s.handleAuthConfig)
 	mux.HandleFunc("GET /api/update", s.authed(s.handleUpdateGet, false))
+	mux.HandleFunc("GET /api/update/releases", s.authed(s.handleUpdateReleases, false))
 	mux.HandleFunc("POST /api/update/check", s.authed(s.handleUpdateCheck, false))
 	mux.HandleFunc("GET /api/health", s.authed(s.handleHealth, false))
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
