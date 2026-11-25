@@ -1,6 +1,9 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.11', date: '2026-11-25', title: 'System marker on every PC', new: [
+    'Each PC picture now has a small system marker: a window for Windows, an apple for macOS and a penguin for Linux. They are the standard emoji of your device, not company logos.',
+  ] },
   { v: '1.0.10', date: '2026-11-25', title: 'Maker logos, and setup waits for offline PCs', new: [
     'Maker logos: under Settings → Appearance → Maker logos, upload the official PNG for Dell, Lenovo, Raspberry Pi, Windows and so on. It replaces the drawing on every PC from that maker, and a maker logo wins over the system logo. Helm does not include any company logos itself.',
   ], fixed: [

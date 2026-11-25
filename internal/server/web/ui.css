@@ -319,3 +319,5 @@ html[data-density="compact"] .pccard-main { padding: 12px 12px 8px; }
 .aboutname { font-size: 22px; font-weight: 700; letter-spacing: -.01em; } .aboutver { font-size: 15px; font-variant-numeric: tabular-nums; margin: 2px 0 4px; }
 
 .dart.haslogo { background: var(--panel2); border-radius: 10px; } .dart .dlogo { width: 70%; height: 70%; object-fit: contain; }
+
+.dart .dos { position: absolute; right: -5px; top: -5px; font-style: normal; font-size: calc(var(--s, 40px) * .36); line-height: 1; width: 1.5em; height: 1.5em; display: grid; place-items: center; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--line); }

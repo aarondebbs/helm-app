@@ -19,13 +19,17 @@ function makerLogo(d) {
   return m[v] || (o && m[o]) || '';
 }
 
+// A small system marker on the picture, using the standard emoji of the device itself (a window, an apple, a penguin).
+const OS_MARK = { windows: ['🪟', 'Windows'], macos: ['🍎', 'macOS'], darwin: ['🍎', 'macOS'], linux: ['🐧', 'Linux'] };
+const osMark = d => { const m = OS_MARK[String((d && d.hello && d.hello.os) || '').toLowerCase()]; return m ? h('i', { class: 'dos', title: m[1], 'aria-label': m[1] }, m[0]) : null; };
+
 function deviceArt(d, size) {
   const k = deviceKind(d), box = h('span', { class: 'dart' + (d.online ? ' on' : ''), title: makeText(d) || KIND_LABEL[k] || 'Computer', style: { '--s': (size || 40) + 'px' } });
   const logo = makerLogo(d);
-  if (logo) { box.classList.add('haslogo'); box.append(h('img', { class: 'dlogo', src: logo, alt: '' }), h('i', { class: 'dstat' })); return box; }
+  if (logo) { box.classList.add('haslogo'); box.append(h('img', { class: 'dlogo', src: logo, alt: '' }), osMark(d), h('i', { class: 'dstat' })); return box; }
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 48 48'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = ART[k];
-  box.append(svg, h('i', { class: 'dstat' }));
+  box.append(svg, osMark(d), h('i', { class: 'dstat' }));
   return box;
 }
 
