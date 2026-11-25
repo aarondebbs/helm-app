@@ -569,7 +569,7 @@ function fleetField(canvas, ticker) {
 function showLogin(msg) {
   cleanups.forEach(f => { try { f(); } catch (e) { /* ignore */ } }); cleanups = [];
   routeToken++; S.csrf = ''; S.devices = null;
-  const user = h('input', { type: 'text', autocomplete: 'username', value: 'admin', required: true });
+  const user = h('input', { type: 'text', autocomplete: 'username', placeholder: 'Username', required: true });
   const pw = h('input', { type: 'password', autocomplete: 'current-password', required: true });
   const eye = h('button', { type: 'button', class: 'eye', title: 'Show password', 'aria-label': 'Show password', onclick: () => {
     const show = pw.type === 'password'; pw.type = show ? 'text' : 'password'; eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); eye.classList.toggle('on', show); pw.focus();

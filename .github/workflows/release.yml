@@ -80,8 +80,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          node scripts/relnotes.js "${TAG#v}" > "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" 2>/dev/null || true
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/release/* out/SHA256SUMS --clobber
           else
-            gh release create "$TAG" out/release/* out/SHA256SUMS --title "Helm ${TAG#v}" --generate-notes
+            gh release create "$TAG" out/release/* out/SHA256SUMS --title "Helm ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md"
           fi

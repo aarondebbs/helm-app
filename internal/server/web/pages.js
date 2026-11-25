@@ -457,7 +457,7 @@ async function viewSettings() {
         }, x.newer ? 'primary' : '') : null;
         return h('details', { class: 'release' },
           h('summary', null, h('b', null, x.tag), h('span', { class: 'muted' }, when(x.published)), ...tags, h('span', { class: 'grow' }), btn),
-          h('pre', { class: 'relnotes' }, x.notes || 'No release log was written for this version.'));
+          relBody(x));
       });
       clear(box).append(rows.length ? h('div', { class: 'releases' }, ...rows) : h('div', { class: 'muted' }, 'No releases with a Helm manifest were found in this repository.'));
     };
@@ -721,4 +721,12 @@ function aboutBlock() {
     h('div', { class: 'aboutinfo' }, h('div', { class: 'aboutname' }, 'Helm'), h('div', { class: 'aboutver' }, 'Version ' + (S.version || '…')), h('div', { class: 'muted' }, 'Remote management, antivirus and EDR from one console')));
   api('GET', '/api/update').then(u => { box.querySelector('.aboutver').textContent = 'Version ' + u.current; }).catch(() => {});
   return box;
+}
+
+// The change log of one release: the console's own entry when it has one, otherwise the notes GitHub holds.
+function relBody(x) {
+  const e = typeof CHANGELOG !== 'undefined' && CHANGELOG.find(c => c.v === x.version);
+  if (e) return changeBlock(e, 'h4');
+  const notes = (x.notes || '').replace(/\*\*Full Changelog\*\*:.*$/m, '').trim();
+  return h('pre', { class: 'relnotes' }, notes || 'No release log was written for this version.');
 }

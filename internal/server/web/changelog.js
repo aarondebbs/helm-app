@@ -1,12 +1,18 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.4', date: '2026-11-25', title: 'Change logs in the console, hourly update checks', new: [
+    'Settings → Updates → Versions and release logs now shows the real change log of every version, not a link.',
+  ], better: [
+    'Helm checks for new versions every hour instead of every six.',
+    'The sign-in page no longer fills in admin as the username.',
+  ] },
   { v: '1.0.3', date: '2026-11-25', title: 'Older agents no longer show an error', fixed: [
     'PCs still running an agent from before 1.0.1 no longer fail with unknown command module.install. Helm carries on with the antivirus update, and Set up components tells you to update that PC first.',
   ] },
   { v: '1.0.2', date: '2026-11-25', title: 'A proper About and Updates section', new: [
     'Settings → Updates now opens with the Helm logo and the exact version this server runs, like winver.',
-  ], improved: [
+  ], better: [
     'The GitHub repository field is gone. Every Helm updates from the same place, so it is no longer asked for.',
   ] },
   { v: '1.0.1', date: '2026-11-25', title: 'Plans install what they need, clearer activity, separate tabs', new: [
@@ -66,7 +72,7 @@ const unseenVersion = () => { try { return !!S.version && localStorage.getItem(s
 const markSeen = () => { try { if (S.version) localStorage.setItem(seenKey, S.version); } catch (e) { /* private mode */ } const d = $('#verdot'); if (d) d.remove(); };
 
 function changeBlock(entry, tag) {
-  const part = (cls, label, items) => items.length ? h('div', { class: 'chg ' + cls }, h('h4', null, label), h('ul', null, items.map(t => h('li', null, t)))) : null;
+  const part = (cls, label, items) => items && items.length ? h('div', { class: 'chg ' + cls }, h('h4', null, label), h('ul', null, items.map(t => h('li', null, t)))) : null;
   return h('article', { class: 'release' },
     h('header', null, h(tag || 'h2', null, entry.title), h('span', { class: 'rel-meta' }, 'Version ' + entry.v + (entry.date ? ' · ' + new Date(entry.date + 'T12:00').toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' }) : ''))),
     part('new', 'New', entry.new), part('better', 'Improved', entry.better), part('fixed', 'Fixed', entry.fixed));

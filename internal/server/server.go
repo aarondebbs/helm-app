@@ -118,7 +118,7 @@ func (s *Server) StartBackground() {
 	s.cve.start()
 	s.wg.Add(8)
 	go s.loop(time.Hour, s.autoBackup)
-	go s.loop(6*time.Hour, s.autoUpdateCheck)
+	go s.loop(time.Hour, s.autoUpdateCheck)
 	go s.loop(10*time.Minute, s.autoInventory)
 	go s.loop(30*time.Second, s.evalAlerts)
 	go s.loop(5*time.Second, s.chatFlush)
