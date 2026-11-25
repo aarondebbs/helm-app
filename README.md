@@ -2,23 +2,41 @@
 
 [![release](https://github.com/aarondebbs/helm-app/actions/workflows/release.yml/badge.svg)](https://github.com/aarondebbs/helm-app/actions/workflows/release.yml)
 
-Manage Windows PCs from anywhere: a small background agent (installed with an MSI) plus a web console
-that runs on your Raspberry Pi and is published with Tailscale Funnel.
+Manage PCs from anywhere: one small background agent (Windows MSI, Linux, macOS) plus a web console that runs on your
+Raspberry Pi or any server and is published with Tailscale Funnel. **Version 1.0.** One agent, three modules: remote
+management (**RMM**), **Antivirus** and **EDR**, in any mix per PC.
 
-* **Agent** (`helm-agent.exe`, Go, no dependencies) – Windows service running as SYSTEM, dials *out* to your server.
-  No inbound ports, no firewall changes on the PCs.
-* **Server** (`helm-server`, Go, no dependencies) – one binary + a JSON state file. Serves the website and relays
-  screen / terminal / file / RDP traffic between your browser and the PCs.
-* **Console** – sign in with password **and** authenticator code. Dangerous actions (power, scripts, updates, files,
-  remote screen, terminal) additionally need a code from the last 10 minutes.
+* **Agent** (`helm-agent`, Go, no dependencies) – a service that dials *out* to your server. No inbound ports, no
+  firewall changes on the PCs. It only connects the PC; the console decides what the PC gets.
+* **Server** (`helm-server`, Go, no dependencies) – one binary plus a JSON state file. Serves the console and relays
+  screen, terminal, file and RDP traffic between your browser and the PCs.
+* **Console** – sign in with password **and** authenticator code (or Google). Dangerous actions additionally need a code
+  from the last 30 minutes.
 
 ## What you can do
 
-Inventory & live CPU/RAM/disk · Windows Update (check/install, optional restart) · winget app upgrades ·
-restart / shut down / lock / sleep / hibernate / sign out · PowerShell/cmd terminal · file browser, upload, download ·
-processes (end) · services (start/stop/restart/startup type) · event logs · pop-up message to the user ·
-remote screen **in the browser** (works on Home and Pro, sees the sign-in screen) · RDP **tunnel** for a native client
-(Pro/Enterprise only) · Wake-on-LAN via another PC on the same LAN · bulk actions · audit log · agent self-update (signed).
+* **RMM:** live CPU, memory and disk · inventory with maker and model · Windows Update and winget · power actions ·
+  terminal · files · processes, services, event logs · pop-up messages and two-way chat · remote screen in the browser
+  (Windows) · RDP tunnel · Wake-on-LAN (the agent turns it on in the network card) · bulk actions · scripts, schedules and
+  patch windows · software deployment · network scan and remote install.
+* **Antivirus:** Helm drives the engine the OS already has (Microsoft Defender, ClamAV, XProtect), installs it where it is
+  missing, updates its definitions at least every 24 hours and shows the version of every PC on the **Antivirus** page. Helm
+  does not ship its own signature database.
+* **EDR:** process, network and start-up telemetry with flags for suspicious programs, plus network isolation that
+  releases itself after a time you choose.
+* **Console:** a readable **Activity** feed grouped by day, vulnerability scanner with CVE matching, alerts by Telegram
+  and e-mail, reports, users with roles, backups, appearance and branding, installable as an app.
+
+## Plans, onboarding and tokens
+
+Every PC joins by installing the agent from **Download agent** (pick the OS, then create the installer). Each installer
+is made for **one PC**, works once and expires after 30 minutes. When the PC connects, the console opens its
+**onboarding**: choose the plan (RMM, Antivirus, EDR or any mix), name, group and tags. As soon as a plan is saved,
+Helm sets the PC up by itself: it installs the antivirus engine (ClamAV on Linux, a Defender check on Windows), makes sure
+the firewall tool for isolation is there, turns on Wake-on-LAN and fetches the first definitions. **Plan & modules → Set up
+this PC** runs the same steps again. The server enforces the plan: a PC with only Antivirus cannot be sent an RMM command.
+
+PC details open in a **side pane**. Terminal and Remote screen open in their own browser tab.
 
 ## Install from GitHub
 
@@ -64,10 +82,11 @@ sudo systemctl daemon-reload && sudo systemctl enable --now helm-server
 
 ### Updates and choosing a version later
 
-In the console open **Settings, Updates**. Enter the repository (`aarondebbs/helm-app` is filled in by the Windows installer),
-then open **Versions and release logs**: every release is listed with its log, and each has **Install** (newer) or
-**Roll back to this** (older). A backup is taken first, the file is verified against the release signature, and the server
-restarts by itself (PCs reconnect within seconds). PCs follow with their own signed self-update.
+Every Helm installs from the same public repository, so there is nothing to enter. In the console open **Settings →
+Updates**: it shows the logo and the exact version you run, checks for a new version every hour, and under **Versions and
+release logs** lists every release with its real change log. Each has **Install** (newer) or **Roll back to this** (older).
+A backup is taken first, the file is verified against the release signature, and the server restarts by itself (PCs
+reconnect within seconds). **Update PCs now** rolls the new agent out; PCs verify the signature before swapping.
 
 Rolling back is safe for the program but an older version may not understand data a newer one saved; restore the
 automatic backup (Settings, Backups) if something looks wrong.
@@ -75,9 +94,11 @@ automatic backup (Settings, Backups) if something looks wrong.
 ### Publishing your own releases
 
 Fork the repository, add the contents of `keys/release.key` as the repository secret `HELM_RELEASE_KEY` (create one with
-`go run ./cmd/helm-sign keygen -out keys/release.key`; keep it private), then run **Actions, release** with a tag such as
-`v0.10.1`, or push that tag. The workflow tests, builds everything, writes the release log from your commit messages since the
-previous tag, and publishes the release. Use your own `owner/name` for `-Repo` and in Settings.
+`go run ./cmd/helm-sign keygen -out keys/release.key`; keep it private). Releases then build **automatically**: bump
+`VERSION` and the top entry of `internal/server/web/changelog.js` and push to `main`. The workflow builds and tests
+everything, signs it and publishes the release, using that changelog entry as the release notes. You can also run
+**Actions → release** by hand with a tag such as `v1.0.7`. Settings in the console read from `aarondebbs/helm-app`;
+a fork changes `officialRepo` in `internal/server/server.go`.
 
 **Not yet verified on real machines:** the Windows Server service and `Install-HelmServer.ps1` were built and unit-tested but
 not run on a Windows Server. Try it on a test machine first and report anything odd.
@@ -144,33 +165,23 @@ Forgot something? `helm-server reset-password -data …` / `reset-2fa -data …`
 
 ## Add a PC
 
-Console → **Add a PC** → *Create install command*, then on the PC in an **elevated** prompt:
+Console → **Download agent**, choose Windows, Linux or macOS, and create the one-PC installer. On the PC, in an
+**elevated** prompt:
 
 ```
 msiexec /i https://<pi>.<tailnet>.ts.net/dl/Helm-Agent.msi /qn SERVER=https://<pi>.<tailnet>.ts.net TOKEN=hlm_…
 ```
 
-(or copy `Helm-Agent.msi` there first). Optional `CONSENT=prompt_if_present|always_prompt|unattended`.
-The PC appears as **Pending approval**; approve it in the console. The token is deleted from the PC after use.
+The page shows the exact command for each OS and waits for the PC to appear. Optional `CONSENT=prompt_if_present|always_prompt|unattended`.
+The token is deleted from the PC after use. The PC then waits for onboarding (see *Plans, onboarding and tokens*).
 
 Remote-screen consent (default `prompt_if_present`): if someone is signed in they get an Allow/Deny prompt and a banner
 while you are connected; at the sign-in screen / nobody signed in it connects directly. Terminal and file access
 do **not** prompt – they are admin functions that run as SYSTEM.
 
-## Updates (cloud, via GitHub Releases)
+## Updates without GitHub
 
-Helm 0.4.0 can update itself and the agents from a GitHub repository you own.
-
-**One-time setup**
-1. Create a GitHub repo and push this source. Add the repository secret `HELM_RELEASE_KEY` (contents of `keys/release.key`, the ed25519 private key).
-2. Install the 0.4.0 server once by hand (a 0.3.x server has no release public key compiled in, so it cannot verify cloud updates). Build it with `./build.sh` so the public key is embedded.
-3. In the console: *Settings -> Updates*, enter `owner/repo`.
-
-**Releasing**: bump `VERSION`, commit, tag `vX.Y.Z`, push the tag. `.github/workflows/release.yml` builds everything (including the macOS .pkg on a macOS runner), signs `helm-release.json` and publishes the release.
-
-**Applying**: *Settings -> Updates -> Check now*, then *Update PCs now* (agents verify signature and SHA-256 before swapping) and *Update this server* (Linux only; verifies, keeps `.prev`, restarts the service). Agent roll-out can be automatic (toggle). Every file is checked against an ed25519 signature before use; nothing unsigned is installed.
-
-**Without GitHub**: bump `VERSION`, run `./build.sh`, copy `out/server-data/.` over `/var/lib/helm/`.
+Bump `VERSION`, run `./build.sh`, copy `out/server-data/.` over `/var/lib/helm/`.
 
 ## Backups and health
 
@@ -251,7 +262,7 @@ socket) to pick the frame rate and quality. Text and flat areas are sent as comp
 the screen is captured right after a click or key press, and it sharpens by itself once the picture stops changing. Older
 browser tabs that do not acknowledge frames keep working, unthrottled. Capture reuses one bitmap, only changed tiles are copied and compressed, and capturing the next frame overlaps compressing
 and sending the last one, so up to 60 fps is possible for ordinary desktop use. Full-screen video is limited by the
-PC's CPU and the link. Two-way chat with the person at the PC is not built yet.
+PC's CPU and the link.
 
 ## Accepting risks
 
@@ -324,7 +335,11 @@ When you turn on two-step verification, Helm shows the QR code, the **key** and 
 
 ## Wake-on-LAN
 
-*Wake it* on an offline PC sends the magic packet from another online PC on the same network; if there is none, the server sends it itself (this only works when the server is on that network). The PC needs Wake-on-LAN enabled in its BIOS and network adapter, and Helm must have seen its MAC address while it was online.
+When a PC is set up, the agent turns Wake-on-LAN on in the network card (Windows power settings with Fast Startup off,
+`ethtool` plus a saved setting on Linux, `pmset` on macOS; Wi-Fi cards are left alone). *Wake it* on an offline PC then
+sends the magic packet from another online PC on the same network; if there is none, the server sends it itself (only
+works when the server is on that network). Some PCs also need Wake-on-LAN switched on in the BIOS, and Helm must have
+seen the PC's MAC address while it was online.
 
 ## Network scan and remote install
 
@@ -375,3 +390,10 @@ Run Helm behind Tailscale ACLs or an allow-list where you can, and keep admin ac
 - **EDR.** Process, network and start-up telemetry with flags (programs running from temp or download folders, deleted executables, look-alike system names, encoded PowerShell, reverse-shell patterns) and network isolation. Isolation only leaves the Helm server reachable and always has an expiry, so it releases itself.
 - **Console.** PC details open in a side pane; the menu follows the accent colour; sign-in shows progress; Google sign-in has a guided setup; users have a full name, email and job title.
 - **Fixed.** Linux and macOS file browser used Windows paths.
+
+## 1.0.x changes
+
+- **1.0.0:** modules, onboarding, one-PC 30-minute installers, side pane, daily antivirus intelligence, user profiles, guided Google sign-in.
+- **1.0.1–1.0.6:** setting a plan installs what it needs on the PC; readable Activity feed; separate tabs for Terminal and Remote screen; maker and model per PC; an Updates section with the logo and version, hourly update checks and in-console change logs; Wake-on-LAN configured by the agent; automatic releases from `main`.
+
+The full list per version is in the console under *What's new* and in each GitHub release.
