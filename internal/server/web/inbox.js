@@ -69,7 +69,7 @@ async function viewInbox(openId) {
     }
   };
   const loadList = async () => {
-    try { const r = await api('GET', '/api/chat'); if (my !== routeToken) return; convs = r.conversations; setChatCount(r.unread); drawList(); } catch (e) { /* ignore */ }
+    try { const r = await api('GET', '/api/chat'); if (my !== routeToken) return; convs = r.conversations || []; setChatCount(r.unread); drawList(); } catch (e) { /* ignore */ }
   };
   if (openId) {
     clear(pane).append(h('div', { class: 'convtop' }, h('a', { class: 'back', href: '#/inbox' }, '← All chats'), h('h2', null, nameOf(openId)), h('a', { class: 'btn small', href: '#/d/' + openId }, 'Open PC')));

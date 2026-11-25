@@ -156,7 +156,7 @@ type chatConv struct {
 
 func (s *Server) handleChatInbox(w http.ResponseWriter, r *http.Request, sess *session) {
 	online := s.hub.onlineIDs()
-	var out []chatConv
+	out := []chatConv{}
 	total := 0
 	s.db.view(func(d *dbData) {
 		for _, dev := range s.st.devices() {

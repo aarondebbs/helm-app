@@ -27,7 +27,7 @@ async function viewDashboard() {
     try { chat = await api('GET', '/api/chat'); } catch (e) { /* optional */ }
     if (my !== routeToken) return;
     const work = [];
-    for (const c of chat.conversations) if (c.unread) work.push({ rank: 2, tone: 'info', title: c.name + ' wrote to you', detail: c.last.text, acts: [h('a', { class: 'btn small primary', href: '#/inbox/' + c.deviceId }, 'Reply')], when: c.last.at });
+    for (const c of chat.conversations || []) if (c.unread) work.push({ rank: 2, tone: 'info', title: c.name + ' wrote to you', detail: c.last.text, acts: [h('a', { class: 'btn small primary', href: '#/inbox/' + c.deviceId }, 'Reply')], when: c.last.at });
     for (const p of devs.filter(x => !x.approved)) work.push({ rank: 2, tone: 'warn', title: p.name + ' is waiting for approval', detail: 'Enrolled via "' + (p.via || '?') + '" from ' + p.lastIp,
       acts: [actionButton('Approve', async () => { await api('POST', `/api/devices/${p.id}/approve`, {}); toast('Approved ' + p.name, 'ok'); S.devices = null; draw(); }, 'small primary'), h('a', { class: 'btn small', href: '#/devices' }, 'Review')] });
     for (const a of d.alerts) work.push({ rank: a.severity === 'critical' ? 4 : a.severity === 'warning' ? 3 : 1, tone: a.severity === 'critical' ? 'bad' : a.severity === 'warning' ? 'warn' : 'info', title: a.title,
@@ -55,5 +55,7 @@ async function viewDashboard() {
           h('div', { class: 'makeup' }, h('div', null, h('h4', null, 'Groups'), groups.length ? hbars(groups.map(([k, v]) => ({ label: k, v }))) : h('p', { class: 'muted' }, 'No groups yet')),
             h('div', null, h('h4', null, 'Systems'), oses.length ? hbars(oses.map(([k, v]) => ({ label: k, v, color: 'var(--text2)' }))) : h('p', { class: 'muted' }, 'No data yet'))))));
   };
-  draw(); every(15000, draw);
+  // a render error must never leave the page spinning
+  const safe = () => draw().catch(e => { clear(host).append(h('div', { class: 'notice bad' }, 'Could not draw this page: ' + e.message)); });
+  safe(); every(15000, safe);
 }
