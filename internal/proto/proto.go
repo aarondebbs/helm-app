@@ -56,6 +56,8 @@ type Hello struct {
 	ConsentMode string   `json:"consentMode"`
 	CanRDP      bool     `json:"canRdp"`
 	Chassis     string   `json:"chassis,omitempty"` // pi | laptop | desktop | vm | server
+	Vendor      string   `json:"vendor,omitempty"`  // maker: Dell, Lenovo, Raspberry Pi, Apple...
+	Model       string   `json:"model,omitempty"`
 }
 
 // Disk is one fixed drive.
@@ -183,6 +185,7 @@ func (h Hello) Sanitize() Hello {
 	if h.Chassis != "pi" && h.Chassis != "laptop" && h.Chassis != "desktop" && h.Chassis != "vm" && h.Chassis != "server" {
 		h.Chassis = ""
 	}
+	h.Vendor, h.Model = cut(h.Vendor, 40), cut(h.Model, 60)
 	h.MACs, h.IPs = list(h.MACs, 16, 40), list(h.IPs, 32, 64)
 	return h
 }

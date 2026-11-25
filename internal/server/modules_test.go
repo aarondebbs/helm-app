@@ -60,3 +60,11 @@ func TestTokenIsOnePC(t *testing.T) {
 		t.Fatal("a token must work for one PC only")
 	}
 }
+
+func TestModuleInstallAllowedOnAnyPlan(t *testing.T) {
+	for _, have := range [][]string{{"av"}, {"edr"}, {"rmm"}} {
+		if !modulesAllow(have, "module.install") {
+			t.Errorf("module.install should be allowed for plan %v", have)
+		}
+	}
+}

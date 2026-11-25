@@ -29,3 +29,7 @@ function liveMeter(label) {
     fill.style.width = Math.min(100, p) + '%'; fill.className = p >= 90 ? 'hot' : p >= 75 ? 'mid' : ''; num.textContent = p + '%';
   } };
 }
+
+// Maker and model as plain text, e.g. "Dell · Latitude 5420". Shown wherever a PC's picture is.
+const makeText = d => { const h = (d && d.hello) || {}; return [h.vendor, h.model && h.model !== h.vendor ? h.model : ''].filter(Boolean).join(' · '); };
+const vendorChip = d => { const v = d && d.hello && d.hello.vendor; return v ? h('span', { class: 'chip plain vendor', title: makeText(d) }, v) : null; };

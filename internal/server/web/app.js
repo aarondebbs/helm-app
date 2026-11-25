@@ -661,6 +661,10 @@ function navBar() {
 }
 
 function navigate() {
+  const path0 = location.hash.replace(/^#/, '') || '/';
+  const dm = path0.match(/^\/d\/([^/]+)(?:\/([a-z]+))?$/);
+  // Moving between sections of the open PC pane changes only the pane, not the page behind it.
+  if (dm && window.paneSwitch && window.paneSwitch(decodeURIComponent(dm[1]), dm[2] || 'overview')) return;
   navBar();
   cleanups.forEach(f => { try { f(); } catch (e) { /* ignore */ } }); cleanups = [];
   routeToken++;
@@ -788,9 +792,9 @@ function viewDevices() {
         sec && sec.counts ? h('div', { style: { marginTop: '12px' } }, sevBar(sec.counts), h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, SEV_ORDER.map(k => (sec.counts[k] || 0) + ' ' + k).join(' · '))) : null),
       h('div', { class: 'pcx-acts' },
         h('a', { class: 'btn primary', href: '#/d/' + d.id }, 'Open PC'),
-        d.online && osKey(d) === 'windows' ? h('a', { class: 'btn', href: '#/d/' + d.id + '/screen' }, 'Remote screen') : null,
+        d.online && osKey(d) === 'windows' ? h('a', { class: 'btn', href: '#/session/' + d.id + '/screen', target: '_blank', rel: 'noopener' }, 'Remote screen') : null,
         h('a', { class: 'btn', href: '#/inbox/' + d.id }, icon('chat'), 'Chat'),
-        d.online ? h('a', { class: 'btn', href: '#/d/' + d.id + '/terminal' }, 'Terminal') : null,
+        d.online ? h('a', { class: 'btn', href: '#/session/' + d.id + '/terminal', target: '_blank', rel: 'noopener' }, 'Terminal') : null,
         d.online ? actionButton('Scan now', async () => { await api('POST', `/api/devices/${d.id}/scan`, {}); toast('Scan started on ' + d.name, 'ok'); }) : null));
   };
   const refs = new Map(); // device id -> function that patches the live numbers in place
@@ -811,7 +815,7 @@ function viewDevices() {
       h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': 'Select ' + d.name, onchange: e => onSel(d.id, e.target.checked) })),
       h('button', { class: 'pc-main', 'aria-expanded': String(open), onclick: toggleOpen },
         deviceArt(d, 38),
-        h('span', { class: 'pc-name' }, h('b', null, d.name), h('span', { class: 'muted small-text' }, [who, osText(d)].filter(Boolean).join(' · ') || (KIND_LABEL[deviceKind(d)] || '')))),
+        h('span', { class: 'pc-name' }, h('b', null, d.name), h('span', { class: 'muted small-text' }, [who, makeText(d) || KIND_LABEL[deviceKind(d)], osText(d)].filter(Boolean).join(' · ')))),
       h('div', { class: 'pc-tags' }, d.group ? h('span', { class: 'tag group' }, d.group) : null, tagNodes(d.tags)),
       h('div', { class: 'pc-load' }, live.cpu, live.mem, live.seen),
       h('div', { class: 'pc-score' }, scoreBadge(d.security))));
@@ -825,7 +829,7 @@ function viewDevices() {
       h('a', { class: 'pccard-main', href: '#/d/' + d.id },
         deviceArt(d, 64),
         h('b', { class: 'pccard-name' }, d.name),
-        h('span', { class: 'muted small-text' }, [who, osText(d)].filter(Boolean).join(' · ') || (KIND_LABEL[deviceKind(d)] || '')),
+        h('span', { class: 'muted small-text' }, [who, makeText(d) || KIND_LABEL[deviceKind(d)], osText(d)].filter(Boolean).join(' · ')),
         h('div', { class: 'pccard-load' }, live.cpu, live.mem),
         live.seen),
       h('div', { class: 'pccard-foot' }, h('div', { class: 'pc-tags' }, d.group ? h('span', { class: 'tag group' }, d.group) : null, tagNodes(d.tags)), scoreBadge(d.security)));
@@ -1055,7 +1059,7 @@ async function viewActivity() {
   const recBox = h('div', { class: 'panel flush' });
   const logBox = h('div', { class: 'panel flush' });
   shell('activity', [pageHead('Activity', 'What is running now, what finished this week, and everything done through this console', h('a', { class: 'btn', href: '/api/reports/audit', download: '' }, 'Export CSV')),
-    h('h3', { class: 'sec' }, 'Running now'), runBox, h('h3', { class: 'sec' }, 'Last 7 days'), recBox, h('h3', { class: 'sec' }, 'Audit log'), logBox]);
+    h('h3', { class: 'sec' }, 'Running now'), runBox, h('h3', { class: 'sec' }, 'Last 7 days'), recBox, h('h3', { class: 'sec' }, 'What people did in this console'), logBox]);
   const open = new Set();
   const elapsed = t => fmtDur(Math.max(0, Math.round((Date.now() - new Date(t)) / 1000)));
   const pctBar = t => t.percent >= 0
@@ -1093,15 +1097,97 @@ async function viewActivity() {
   try {
     const [rows, devs] = await Promise.all([api('GET', '/api/audit?limit=300'), getDevices()]);
     const names = Object.fromEntries(devs.map(d => [d.id, d.name]));
-    const q = h('input', { type: 'search', placeholder: 'Filter…', style: { margin: '12px 20px' } });
-    const tb = h('div');
+    // Plain-language activity feed: each entry is a sentence, grouped by day, with the technical detail tucked away.
+    const CMD = { exec: 'ran a command', 'process.kill': 'ended a program', 'service.control': 'changed a service', power: 'sent a power action', 'updates.install': 'installed Windows updates', 'updates.check': 'checked for updates',
+      'file.delete': 'deleted a file', 'file.rename': 'renamed a file', 'file.mkdir': 'made a folder', 'file.list': 'browsed files', 'av.scan': 'ran an antivirus scan', 'av.update': 'updated antivirus intelligence', 'av.status': 'checked antivirus',
+      'edr.isolate': 'isolated the PC from the network', 'edr.release': 'released the PC from isolation', 'edr.snapshot': 'took an EDR snapshot', 'agent.update': 'updated the agent', 'agent.uninstall': 'removed the agent', 'rdp.enable': 'turned Remote Desktop on', 'rdp.disable': 'turned Remote Desktop off',
+      inventory: 'collected the hardware inventory', 'software.list': 'listed installed software', 'winget.upgrade': 'updated an app', 'winget.install': 'installed an app', 'winget.uninstall': 'removed an app', 'fix.apply': 'applied a security fix', msg: 'sent a message', 'scan.software': 'scanned software', 'scan.config': 'scanned settings', 'scan.ports': 'scanned ports' };
+    const T = (who, text, pc, cat, ic, tone) => ({ who, text, pc, cat, ic, tone });
+    const describe = r => {
+      const dev = r.device ? (names[r.device] || 'a PC') : '', det = r.detail || '', a = r.action;
+      const user = det.split(' ')[0];
+      switch (a) {
+        case 'login': return T('Someone', det === 'google' ? 'signed in with Google' : 'signed in', '', 'access', 'in', 'ok');
+        case 'login_failed': return T('', 'A sign-in failed' + (det ? ' (' + det + ')' : ''), '', 'access', 'warn', 'bad');
+        case 'logout': return T('Someone', 'signed out', '', 'access', 'out');
+        case 'stepup': return T('', 'Authenticator code confirmed for a sensitive action', '', 'access', 'key');
+        case 'stepup_failed': return T('', 'A wrong authenticator code was entered', '', 'access', 'warn', 'bad');
+        case 'enroll': return T('', 'A new PC connected: ' + det, '', 'pc', 'plus', 'ok');
+        case 'enroll_rejected': return T('', 'A PC tried to connect with an invalid or used installer: ' + det, '', 'pc', 'warn', 'bad');
+        case 'token_created': return T('', 'Made a one-PC installer', '', 'pc', 'download');
+        case 'installer_downloaded': return T('', 'Downloaded an installer', '', 'pc', 'download');
+        case 'device_onboarded': return T('', 'Finished setting up', dev, 'pc', 'plus', 'ok', det);
+        case 'device_modules': return T('', 'Changed the plan to ' + det.replace(/\+/g, ' + ').toUpperCase(), dev, 'pc', 'gear');
+        case 'device_approved': return T('', 'Approved', dev, 'pc', 'plus', 'ok');
+        case 'device_deleted': return T('', 'Removed', dev || det, 'pc', 'warn', 'bad');
+        case 'device_edited': return T('', 'Edited the name, group or notes of', dev, 'pc', 'gear');
+        case 'command': { const n = det.split(' ')[0]; return T('', (CMD[n] || 'ran ' + n).replace(/^./, c => c.toUpperCase()) + ' on', dev, 'pc', n.startsWith('edr') || n.startsWith('av') ? 'shield' : 'zap', n === 'edr.isolate' || n === 'file.delete' || n === 'agent.uninstall' ? 'bad' : ''); }
+        case 'file_download': return T('', 'Downloaded a file from', dev, 'pc', 'download');
+        case 'file_upload': return T('', 'Uploaded a file to', dev, 'pc', 'download');
+        case 'wake': return T('', 'Sent a wake-up signal to', dev, 'pc', 'zap');
+        case 'chat_sent': return T('', 'Sent a chat message to', dev, 'pc', 'chat');
+        case 'support_requested': return T('', 'Asked for support from', dev, 'pc', 'chat', 'warn');
+        case 'scan_run': case 'scan_started': return T('', 'Started a security scan on', dev || 'all PCs', 'sec', 'shield');
+        case 'scan_finished': return T('', 'Security scan finished on', dev, 'sec', 'shield', 'ok');
+        case 'av_update_all': return T('', 'Updated antivirus intelligence on every PC', '', 'sec', 'shield', 'ok');
+        case 'risk_accepted': return T('', 'Accepted a security risk', dev, 'sec', 'shield');
+        case 'risk_unaccepted': return T('', 'Stopped accepting a security risk', dev, 'sec', 'shield');
+        case 'rdp_tunnel_open': return T('', 'Opened a Remote Desktop tunnel to', dev, 'pc', 'video');
+        case 'rdp_tunnel_close': return T('', 'Closed the Remote Desktop tunnel to', dev, 'pc', 'video');
+        case 'rdp_tunnel_connection': return T('', 'Someone connected through the Remote Desktop tunnel to', dev, 'pc', 'video');
+        case 'rdp_tunnel_failed': return T('', 'The Remote Desktop tunnel failed for', dev, 'pc', 'warn', 'bad');
+        case 'settings_changed': return T('', 'Changed settings', '', 'admin', 'gear');
+        case 'google_signin_changed': return T('', 'Changed the Google sign-in setup', '', 'admin', 'gear');
+        case 'password_changed': return T('', 'Changed a password', '', 'access', 'key');
+        case 'password_change_failed': return T('', 'A password change failed', '', 'access', 'warn', 'bad');
+        case 'username_changed': return T('', 'Changed a username', '', 'access', 'key');
+        case 'user_added': return T('', 'Added the console user ' + det, '', 'admin', 'plus');
+        case 'user_removed': return T('', 'Removed the console user ' + det, '', 'admin', 'warn');
+        case 'user_reset': return T('', 'Reset the sign-in of ' + det, '', 'admin', 'key');
+        case 'backup_created': return T('', 'Made a backup', '', 'admin', 'file');
+        case 'backup_deleted': return T('', 'Deleted a backup', '', 'admin', 'warn');
+        case 'backup_restore': return T('', 'Restored a backup', '', 'admin', 'warn', 'bad');
+        case 'backup_downloaded': return T('', 'Downloaded a backup', '', 'admin', 'download');
+        case 'backup_uploaded': return T('', 'Uploaded a backup', '', 'admin', 'download');
+        case 'server_updated': return T('', 'Updated the Helm server', '', 'admin', 'zap', 'ok');
+        case 'agents_updated': return T('', 'Updated agents on the PCs', '', 'admin', 'zap', 'ok');
+        case 'script_run': return T('', 'Ran a saved script', dev, 'pc', 'zap');
+        case 'script_saved': return T('', 'Saved a script', '', 'admin', 'file');
+        case 'schedule_saved': return T('', 'Saved a scheduled task', '', 'admin', 'zap');
+        case 'package_added': case 'package_uploaded': return T('', 'Added a software package', '', 'admin', 'box');
+        case 'deploy': return T('', 'Installed software on', dev || 'PCs', 'pc', 'box');
+        case 'update_software': return T('', 'Updated ' + det + ' on', dev, 'pc', 'box');
+        case 'network_scan': return T('', 'Scanned the network', '', 'pc', 'net');
+        case 'network_install': return T('', 'Installed the agent over the network on ' + det, '', 'pc', 'net');
+        case 'patch_window': case 'patch_window_programs': case 'patch_window_run': return T('', 'Patch window: ' + a.replace('patch_window', 'run').replace(/_/g, ' '), dev, 'admin', 'zap');
+        default: return T('', a.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()), dev, 'admin', 'list');
+      }
+    };
+    const CATS = [['all', 'Everything'], ['pc', 'PC actions'], ['sec', 'Security'], ['access', 'Sign-ins & access'], ['admin', 'Settings & admin']];
+    let cat = 'all';
+    const q = h('input', { type: 'search', placeholder: 'Search by PC, person or what happened…', style: { flex: 1, minWidth: '14em' } });
+    const chips = h('div', { class: 'pills' });
+    const tb = h('div', { class: 'feed' });
+    const dayLabel = t => { const d = new Date(t), n = new Date(), y = new Date(Date.now() - 864e5); const same = (a, b) => a.toDateString() === b.toDateString(); return same(d, n) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }); };
     const draw = () => {
       const f = q.value.toLowerCase();
-      clear(tb).append(table(['Time', 'Action', 'PC', 'Detail', 'From'].map(x => ({ label: x })), rows.filter(r => !f || JSON.stringify(r).toLowerCase().includes(f) || (names[r.device] || '').toLowerCase().includes(f))
-        .map(r => h('tr', null, h('td', { class: 'nowrap' }, fmtTime(r.time)), h('td', null, h('span', { class: 'badge' }, r.action)), h('td', null, r.device ? (names[r.device] || r.device) : ''), h('td', { class: 'mono wrap' }, r.detail || ''), h('td', { class: 'muted' }, r.ip || ''))), { empty: 'No matching entries' }));
+      clear(chips).append(CATS.map(([k, l]) => h('button', { class: 'pill' + (cat === k ? ' on' : ''), onclick: () => { cat = k; draw(); } }, l)));
+      const items = rows.map(r => ({ r, d: describe(r) })).filter(({ r, d }) => (cat === 'all' || d.cat === cat) && (!f || (d.text + ' ' + d.pc + ' ' + (r.detail || '') + ' ' + r.action).toLowerCase().includes(f)));
+      clear(tb);
+      if (!items.length) { tb.append(h('div', { class: 'muted', style: { padding: '18px 20px' } }, 'Nothing matches.')); return; }
+      let day = '';
+      items.forEach(({ r, d }) => {
+        const dl = dayLabel(r.time);
+        if (dl !== day) { day = dl; tb.append(h('div', { class: 'feedday' }, dl)); }
+        const det = h('div', { class: 'feeddet hidden' }, h('dl', { class: 'kv' }, h('dt', null, 'Exact time'), h('dd', null, fmtTime(r.time)), r.ip ? [h('dt', null, 'From'), h('dd', null, r.ip)] : null, h('dt', null, 'Action'), h('dd', { class: 'mono' }, r.action), r.detail ? [h('dt', null, 'Detail'), h('dd', { class: 'mono wrap' }, r.detail)] : null));
+        tb.append(h('button', { class: 'feeditem ' + (d.tone || ''), onclick: e => { det.classList.toggle('hidden'); e.currentTarget.classList.toggle('open'); } },
+          h('span', { class: 'feedico' }, icon(({ warn: 'alert', in: 'check', out: 'out', key: 'lock' })[d.ic] || d.ic)),
+          h('span', { class: 'feedtext' }, d.who ? d.who + ' ' : '', d.text, d.pc ? [' ', h('b', null, d.pc)] : null),
+          h('span', { class: 'feedtime muted' }, new Date(r.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))), det);
+      });
     };
     q.addEventListener('input', draw);
-    clear(logBox).append(q, tb); draw();
+    clear(logBox).append(h('div', { class: 'row', style: { padding: '12px 20px 0' } }, q), h('div', { style: { padding: '10px 20px 0' } }, chips), tb); draw();
   } catch (e) { clear(logBox).append(h('div', { style: { padding: '20px' } }, 'Could not load the audit log: ' + e.message)); }
 }
 

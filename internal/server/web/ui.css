@@ -297,3 +297,18 @@ html[data-density="compact"] .pccard-main { padding: 12px 12px 8px; }
 .oscard { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); transition: border-color .15s, transform .15s; }
 .oscard:hover { border-color: var(--accent-line); transform: translateY(-2px); }
 .osart { font-size: 2rem; line-height: 1; } .oscard b { font-size: 1.1rem; } .oscard .muted { flex: 1; min-height: 3em; }
+
+.dnav a.newtab { display: flex; justify-content: space-between; align-items: center; } .dnav .ext { color: var(--muted); font-size: 12px; }
+.sessionpage { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.sessionbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.sessionbody { flex: 1; padding: 16px 18px 24px; max-width: 1500px; width: 100%; margin: 0 auto; }
+
+.feed { padding: 4px 0 8px; } .feedday { padding: 16px 20px 6px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.feeditem { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 9px 20px; border: 0; border-radius: 0; background: none; font: inherit; color: var(--text); cursor: pointer; }
+.feeditem:hover { background: var(--hover); }
+.feedico { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.feeditem.ok .feedico { background: var(--ok-soft, var(--accent-soft)); color: var(--ok); } .feeditem.bad .feedico { background: var(--bad-soft); color: var(--bad); } .feeditem.warn .feedico { background: var(--warn-soft, var(--accent-soft)); color: var(--warn); }
+.feedico svg { width: 16px; height: 16px; } .feedtext { flex: 1; min-width: 0; } .feedtime { flex: none; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.feeddet { padding: 0 20px 10px 60px; }
+
+.chip.vendor { background: var(--panel2); color: var(--text2); border: 1px solid var(--line); }

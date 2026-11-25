@@ -29,6 +29,17 @@ type AVRec struct {
 }
 
 func (s *Server) storeAV(j Job) {
+	if j.Name == "module.install" && j.Status == "ok" {
+		var a struct{ Modules []string }
+		_ = json.Unmarshal(j.Args, &a)
+		for _, m := range a.Modules {
+			if m == "av" {
+				_, _ = s.hub.dispatch(j.DeviceID, "av.update", json.RawMessage(`{}`), "auto-av")
+				_, _ = s.hub.dispatch(j.DeviceID, "av.status", json.RawMessage(`{}`), "auto-av")
+			}
+		}
+		return
+	}
 	if j.Name != "av.status" && j.Name != "av.update" {
 		return
 	}
@@ -55,15 +66,11 @@ func (s *Server) storeAV(j Job) {
 	}
 }
 
-// kickAV starts the first update and status read for a PC that just got the Antivirus module.
+// kickAV installs whatever the chosen modules need on the PC (an antivirus engine, a firewall tool).
+// When that finishes, storeAV starts the first definition update.
 func (s *Server) kickAV(id string, mods []string) {
-	for _, m := range mods {
-		if m == "av" {
-			_, _ = s.hub.dispatch(id, "av.update", json.RawMessage(`{}`), "auto-av")
-			_, _ = s.hub.dispatch(id, "av.status", json.RawMessage(`{}`), "auto-av")
-			return
-		}
-	}
+	args, _ := json.Marshal(map[string]any{"modules": mods})
+	_, _ = s.hub.dispatch(id, "module.install", args, "auto-setup")
 }
 
 // autoAV keeps the antivirus intelligence of every online PC with the module fresh.

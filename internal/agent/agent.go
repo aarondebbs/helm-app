@@ -351,8 +351,10 @@ func (a *Agent) collectHello() proto.Hello {
 	osv, ed := osInfo()
 	user, _ := loggedOnUser()
 	macs, ips := netInfo()
-	return proto.Hello{Version: a.cfg.Version, Hostname: host, OS: helloOS(), OSVersion: osv, Edition: ed,
+	h := proto.Hello{Version: a.cfg.Version, Hostname: host, OS: helloOS(), OSVersion: osv, Edition: ed,
 		Arch: runtime.GOARCH, User: user, MACs: macs, IPs: ips, ConsentMode: a.cfg.ConsentMode, CanRDP: canHostRDP(ed), Chassis: detectChassis(ed)}
+	h.Vendor, h.Model = detectMake()
+	return h
 }
 
 // netInfo lists the MAC and IPv4 addresses of physical-looking interfaces.

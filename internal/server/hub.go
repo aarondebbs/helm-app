@@ -58,13 +58,14 @@ var commands = map[string]cmdSpec{
 	"pkg.install":      {false, 3 * time.Hour},
 	"fix.apply":        {false, 10 * time.Minute},
 	// antivirus and EDR modules
-	"av.status":    {false, 90 * time.Second},
-	"av.scan":      {false, 4*time.Hour + time.Minute},
-	"av.update":    {false, 25 * time.Minute},
-	"av.threats":   {false, 90 * time.Second},
-	"edr.snapshot": {false, 3 * time.Minute},
-	"edr.isolate":  {true, 2 * time.Minute},
-	"edr.release":  {false, 2 * time.Minute},
+	"av.status":      {false, 90 * time.Second},
+	"av.scan":        {false, 4*time.Hour + time.Minute},
+	"av.update":      {false, 25 * time.Minute},
+	"av.threats":     {false, 90 * time.Second},
+	"edr.snapshot":   {false, 3 * time.Minute},
+	"edr.isolate":    {true, 2 * time.Minute},
+	"edr.release":    {false, 2 * time.Minute},
+	"module.install": {false, 50 * time.Minute},
 }
 
 // cmdModules lists which modules unlock a command. nil means every PC may be sent it.
@@ -76,7 +77,7 @@ func cmdModules(name string) []string {
 		return []string{"edr"}
 	case name == "process.list", name == "process.kill", name == "eventlog":
 		return []string{"rmm", "edr"}
-	case strings.HasPrefix(name, "scan."), name == "inventory", name == "ping", name == "drives.list", name == "software.list":
+	case name == "module.install", strings.HasPrefix(name, "scan."), name == "inventory", name == "ping", name == "drives.list", name == "software.list":
 		return nil
 	}
 	return []string{"rmm"}

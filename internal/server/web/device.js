@@ -126,6 +126,7 @@ function tabOverview(body, dev, id) {
     h('div', { class: 'grid', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' } },
       h('div', { class: 'panel' }, h('h3', null, 'Status'), h('dl', { class: 'kv' },
         h('dt', null, hello.os === 'linux' || hello.os === 'darwin' ? 'Operating system' : 'Windows'), h('dd', null, [hello.osVersion, hello.edition].filter(Boolean).join(' · ') || '–'),
+        h('dt', null, 'Make and model'), h('dd', null, makeText(dev) || '–'),
         h('dt', null, 'Architecture'), h('dd', null, hello.arch || '–'),
         h('dt', null, 'Agent'), h('dd', null, hello.version || '–'),
         h('dt', null, 'Addresses'), h('dd', null, (hello.ips || []).join(', ') || '–'),

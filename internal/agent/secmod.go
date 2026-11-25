@@ -595,3 +595,153 @@ func (a *Agent) resumeIsolation() {
 	}
 	time.AfterFunc(time.Until(st.Until), func() { _, _ = a.releaseIsolation(context.Background()) })
 }
+
+// ---------------- component installation ----------------
+
+// moduleInstall makes sure the things a module needs are on the PC: an antivirus engine for Antivirus, a firewall
+// tool for EDR isolation. RMM needs nothing extra, it is the agent itself.
+
+type compResult struct {
+	Module string   `json:"module"`
+	OK     bool     `json:"ok"`
+	Steps  []string `json:"steps"`
+	Note   string   `json:"note,omitempty"`
+}
+
+func secRunEnv(ctx context.Context, timeout time.Duration, env []string, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), env...)
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(out), errors.New("timed out")
+	}
+	return string(out), err
+}
+
+// installPackages installs distro packages with whichever package manager the machine has.
+func installPackages(ctx context.Context, c *cmdCtx, debian, rpm, arch []string) (string, error) {
+	env := []string{"DEBIAN_FRONTEND=noninteractive"}
+	switch {
+	case haveBin("apt-get"):
+		c.progress("Installing " + strings.Join(debian, ", ") + " with apt")
+		_, _ = secRunEnv(ctx, 5*time.Minute, env, "apt-get", "update", "-qq")
+		return secRunEnv(ctx, 20*time.Minute, env, "apt-get", append([]string{"install", "-y", "-qq"}, debian...)...)
+	case haveBin("dnf"):
+		c.progress("Installing " + strings.Join(rpm, ", ") + " with dnf")
+		return secRunEnv(ctx, 20*time.Minute, env, "dnf", append([]string{"install", "-y", "-q"}, rpm...)...)
+	case haveBin("yum"):
+		c.progress("Installing " + strings.Join(rpm, ", ") + " with yum")
+		return secRunEnv(ctx, 20*time.Minute, env, "yum", append([]string{"install", "-y", "-q"}, rpm...)...)
+	case haveBin("pacman"):
+		c.progress("Installing " + strings.Join(arch, ", ") + " with pacman")
+		return secRunEnv(ctx, 20*time.Minute, env, "pacman", append([]string{"-S", "--noconfirm", "--needed"}, arch...)...)
+	case haveBin("zypper"):
+		c.progress("Installing " + strings.Join(rpm, ", ") + " with zypper")
+		return secRunEnv(ctx, 20*time.Minute, env, "zypper", append([]string{"--non-interactive", "install"}, rpm...)...)
+	}
+	return "", errors.New("no supported package manager found (apt, dnf, yum, pacman, zypper)")
+}
+
+func (a *Agent) cmdModuleInstall(ctx context.Context, c *cmdCtx) (any, error) {
+	var args struct {
+		Modules []string `json:"modules"`
+	}
+	if err := decode(c.args, &args); err != nil {
+		return nil, err
+	}
+	var res []compResult
+	for _, m := range args.Modules {
+		r := compResult{Module: m}
+		step := func(s string) { r.Steps = append(r.Steps, s); c.progress(s) }
+		switch m {
+		case "rmm":
+			r.OK = true
+			step("Remote management is part of the agent: nothing to install")
+		case "av":
+			r.OK = a.installAV(ctx, c, &r, step)
+		case "edr":
+			r.OK = a.installEDR(ctx, c, &r, step)
+		default:
+			continue
+		}
+		res = append(res, r)
+	}
+	return map[string]any{"components": res}, nil
+}
+
+func (a *Agent) installAV(ctx context.Context, c *cmdCtx, r *compResult, step func(string)) bool {
+	switch runtime.GOOS {
+	case "windows":
+		out, _ := secPS(ctx, 2*time.Minute, `$s=Get-Service WinDefend -ErrorAction SilentlyContinue; if(-not $s){'missing'} elseif($s.Status -ne 'Running'){try{Start-Service WinDefend -ErrorAction Stop;'started'}catch{'stopped'}} else {'running'}`)
+		switch st := strings.TrimSpace(out); st {
+		case "running", "started":
+			step("Microsoft Defender is present (" + st + ")")
+			_, _ = secPS(ctx, time.Minute, `Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue`)
+			step("Real-time protection switched on")
+			return true
+		case "missing":
+			if o, err := secPS(ctx, 20*time.Minute, `if(Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue){Install-WindowsFeature -Name Windows-Defender | Out-String}else{throw 'not a Windows Server system'}`); err == nil {
+				step("Installed the Microsoft Defender Windows feature (a restart may be needed)")
+				return true
+			} else {
+				r.Note = "Microsoft Defender is not installed and cannot be added on this edition. Another security product probably manages this PC: " + firstLines(o, 160)
+			}
+		default:
+			r.Note = "Microsoft Defender is installed but will not start. Another security product probably manages this PC."
+		}
+		return false
+	case "linux":
+		if haveBin("clamscan") {
+			step("ClamAV is already installed")
+		} else {
+			if out, err := installPackages(ctx, c, []string{"clamav", "clamav-freshclam"}, []string{"clamav", "clamav-update"}, []string{"clamav"}); err != nil {
+				r.Note = "Could not install ClamAV: " + firstLines(out+err.Error(), 240)
+				return false
+			}
+			step("Installed ClamAV")
+		}
+		if haveBin("systemctl") {
+			_, _ = secRun(ctx, 30*time.Second, "systemctl", "stop", "clamav-freshclam")
+		}
+		c.progress("Downloading the first threat definitions")
+		if out, err := secRun(ctx, 20*time.Minute, "freshclam"); err != nil {
+			r.Note = "ClamAV is installed but the first definition download failed: " + firstLines(out, 200)
+			return false
+		}
+		step("Downloaded threat definitions")
+		if haveBin("systemctl") {
+			_, _ = secRun(ctx, 30*time.Second, "systemctl", "enable", "--now", "clamav-freshclam")
+			step("Turned on ClamAV’s own automatic updates")
+		}
+		return true
+	case "darwin":
+		step("XProtect is built into macOS and updates itself")
+		return true
+	}
+	r.Note = "Not supported on this system"
+	return false
+}
+
+func (a *Agent) installEDR(ctx context.Context, c *cmdCtx, r *compResult, step func(string)) bool {
+	switch runtime.GOOS {
+	case "windows":
+		step("Windows Firewall is built in: network isolation is ready")
+		return true
+	case "linux":
+		if haveBin("iptables") {
+			step("iptables is present: network isolation is ready")
+			return true
+		}
+		if out, err := installPackages(ctx, c, []string{"iptables"}, []string{"iptables"}, []string{"iptables"}); err != nil {
+			r.Note = "Could not install iptables, so network isolation is unavailable: " + firstLines(out+err.Error(), 200)
+			return false
+		}
+		step("Installed iptables: network isolation is ready")
+		return true
+	}
+	r.Note = "Process and network telemetry work; network isolation is not available on macOS yet"
+	return true
+}

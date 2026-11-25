@@ -14,8 +14,49 @@ var (
 )
 
 func detectChassis(edition string) string {
-	chassisOnce.Do(func() { chassisVal = classifyChassis(rawChassis(), edition) })
+	chassisOnce.Do(func() {
+		f := rawChassis()
+		chassisVal = classifyChassis(f, edition)
+		vendorVal, modelVal = normVendor(f), cleanModel(f)
+	})
 	return chassisVal
+}
+
+var vendorVal, modelVal string
+
+// detectMake returns the maker and model of the machine (valid after detectChassis).
+func detectMake() (string, string) { return vendorVal, modelVal }
+
+func cleanModel(f chassisFacts) string {
+	m := f.Model
+	if f.MacModel != "" {
+		m = f.MacModel
+	}
+	m = strings.TrimSpace(m)
+	if low := strings.ToLower(m); low == "" || strings.Contains(low, "to be filled") || strings.Contains(low, "system product name") || low == "default string" {
+		return ""
+	}
+	return m
+}
+
+// normVendor turns the many spellings in firmware into one display name.
+func normVendor(f chassisFacts) string {
+	all := strings.ToLower(f.Vendor + " " + f.Model + " " + f.MacModel)
+	table := []struct{ key, name string }{{"raspberry pi", "Raspberry Pi"}, {"dell", "Dell"}, {"lenovo", "Lenovo"}, {"hewlett", "HP"}, {"hp inc", "HP"}, {"asustek", "ASUS"}, {"asus", "ASUS"},
+		{"acer", "Acer"}, {"microsoft", "Microsoft"}, {"samsung", "Samsung"}, {"micro-star", "MSI"}, {"msi", "MSI"}, {"gigabyte", "Gigabyte"}, {"toshiba", "Toshiba"}, {"dynabook", "Dynabook"},
+		{"fujitsu", "Fujitsu"}, {"vmware", "VMware"}, {"qemu", "QEMU"}, {"innotek", "VirtualBox"}, {"virtualbox", "VirtualBox"}, {"parallels", "Parallels"}, {"xen", "Xen"}, {"supermicro", "Supermicro"}, {"huawei", "Huawei"}, {"apple", "Apple"}}
+	for _, t := range table {
+		if strings.Contains(all, t.key) {
+			return t.name
+		}
+	}
+	if f.MacModel != "" {
+		return "Apple"
+	}
+	if v := strings.TrimSpace(f.Vendor); v != "" && !strings.Contains(strings.ToLower(v), "to be filled") && strings.ToLower(v) != "default string" {
+		return v
+	}
+	return ""
 }
 
 // chassisFacts is what the platform code could read. Fields are empty when unknown.

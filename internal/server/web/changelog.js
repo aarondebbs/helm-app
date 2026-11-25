@@ -1,6 +1,14 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.1', date: '2026-11-25', title: 'Plans install what they need, clearer activity, separate tabs', new: [
+    'Choosing a plan now installs the parts it needs on the PC: ClamAV on Linux, a firewall tool for isolation, a Defender check on Windows. Then it fetches the first definitions. Use Set up components to retry.',
+    'Activity is now a readable feed: plain sentences, grouped by day, with filters and a search. Click an entry for the exact time, address and technical detail.',
+    'Terminal and Remote screen open in their own browser tab.',
+    'Each PC shows its maker and model (Dell, Lenovo, Raspberry Pi, Apple and so on) next to its picture.',
+  ], fixed: [
+    'Clicking inside a PC\'s side pane no longer reloads the page.',
+  ] },
   { v: '1.0.0', date: '2026-11-25', title: 'Helm 1.0 (prerelease): one agent, three modules', new: [
     'Plans: every PC can run RMM, Antivirus, EDR, or any mix. The agent only connects the PC; you choose what it gets, and can change it any time under Plan & modules.',
     'Onboarding: a PC that connects waits for you to pick its plan, name, group and tags. Installers are made for one PC and stop working after 30 minutes or the first use.',

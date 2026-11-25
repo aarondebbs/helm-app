@@ -27,3 +27,23 @@ func TestClassifyChassis(t *testing.T) {
 		}
 	}
 }
+
+func TestNormVendor(t *testing.T) {
+	cases := []struct {
+		f    chassisFacts
+		want string
+	}{
+		{chassisFacts{Vendor: "Dell Inc.", Model: "Latitude 5420"}, "Dell"},
+		{chassisFacts{Vendor: "LENOVO"}, "Lenovo"},
+		{chassisFacts{Vendor: "Hewlett-Packard"}, "HP"},
+		{chassisFacts{Model: "Raspberry Pi 5 Model B Rev 1.0"}, "Raspberry Pi"},
+		{chassisFacts{MacModel: "MacBookPro18,1"}, "Apple"},
+		{chassisFacts{Vendor: "To Be Filled By O.E.M."}, ""},
+		{chassisFacts{Vendor: "innotek GmbH", Model: "VirtualBox"}, "VirtualBox"},
+	}
+	for _, c := range cases {
+		if got := normVendor(c.f); got != c.want {
+			t.Errorf("%+v: got %q want %q", c.f, got, c.want)
+		}
+	}
+}

@@ -70,9 +70,18 @@ function sectionsFor(dev) {
   return SECTIONS.map(([g, need, items]) => [g, items.filter(([k]) => (!need || need.some(m => hasMod(dev, m))) && !(unix && k === 'screen')).map(([k, l]) => [k, unix && k === 'events' ? 'Logs' : l])]).filter(([, items]) => items.length);
 }
 
+// Terminal and remote screen run in a browser tab of their own, so the pane stays usable next to them.
+const SESSION_TABS = ['terminal', 'screen'];
+function sessionLauncher(body, dev, id, kind) {
+  const label = kind === 'screen' ? 'remote screen' : 'terminal';
+  body.append(h('div', { class: 'panel stack' }, h('h3', { style: { margin: 0 } }, kind === 'screen' ? 'Remote screen' : 'Terminal'),
+    h('p', { class: 'muted', style: { margin: 0 } }, 'The ' + label + ' opens in its own browser tab, so you can keep this pane open beside it.'),
+    h('div', null, h('a', { class: 'btn primary', href: `#/session/${id}/${kind}`, target: '_blank', rel: 'noopener' }, 'Open ' + label + ' in a new tab ↗'))));
+}
+
 let PANE = null; // { id, tab, dev, base }
 
-const TAB_FN = () => ({ overview: tabOverview, updates: tabUpdates, processes: tabProcesses, services: tabServices, terminal: tabTerminal, files: tabFiles, chat: tabChat, screen: tabScreen,
+const TAB_FN = () => ({ overview: tabOverview, updates: tabUpdates, processes: tabProcesses, services: tabServices, terminal: (b, d, i) => sessionLauncher(b, d, i, 'terminal'), files: tabFiles, chat: tabChat, screen: (b, d, i) => sessionLauncher(b, d, i, 'screen'),
   events: tabEvents, tools: tabTools, jobs: tabJobs, security: tabSecurity, software: tabSoftware, antivirus: tabAntivirus, edr: tabEdr, plan: tabPlan });
 
 // Called by the router on a hash change: when the pane for this PC is already open, only the section changes.
@@ -105,7 +114,7 @@ async function openDevicePane(id, tab) {
       h('div', { class: 'row spread', style: { flexWrap: 'nowrap', alignItems: 'flex-start' } },
         h('div', { class: 'row', style: { gap: '12px', flexWrap: 'nowrap', minWidth: 0 } }, deviceArt(s, 44),
           h('div', { style: { minWidth: 0 } }, h('h2', { class: 'dtitle' }, s.name),
-            h('div', { class: 'row tight' }, deviceChip(s), scoreBadge(s.security), s.group ? h('span', { class: 'tag group' }, s.group) : null, tagNodes(s.tags),
+            h('div', { class: 'row tight' }, deviceChip(s), vendorChip(s), scoreBadge(s.security), s.group ? h('span', { class: 'tag group' }, s.group) : null, tagNodes(s.tags),
               (s.modules || []).map(m => h('span', { class: 'chip plain mod-' + m }, (MODULES.find(x => x.key === m) || {}).name || m)))),
           ),
         h('div', { class: 'row tight', style: { flexWrap: 'nowrap' } },
@@ -116,7 +125,9 @@ async function openDevicePane(id, tab) {
   };
   const drawNav = () => {
     clear(nav).append(sectionsFor(st.dev).map(([g, items]) => h('div', { class: 'dgroup' }, h('div', { class: 'dgname' }, g),
-      items.map(([k, l]) => h('a', { href: `#/d/${id}/${k}`, class: st.tab === k ? 'active' : '', 'aria-current': st.tab === k ? 'page' : null }, l)))));
+      items.map(([k, l]) => SESSION_TABS.includes(k)
+        ? h('a', { href: `#/session/${id}/${k}`, target: '_blank', rel: 'noopener', class: 'newtab' }, l, h('span', { class: 'ext', 'aria-hidden': 'true' }, '↗'))
+        : h('a', { href: `#/d/${id}/${k}`, class: st.tab === k ? 'active' : '', 'aria-current': st.tab === k ? 'page' : null }, l)))));
   };
   const drawBody = () => {
     const fresh = h('div', { class: 'dbody-in' });
@@ -154,9 +165,24 @@ route(/^\/d\/([^/]+)(?:\/([a-z]+))?$/, (id, tab) => openDevicePane(id, tab));
 routes.splice(routes.findIndex(r => r[1] === viewDevice), 1); // the old full-page route goes away
 
 // ---------- Antivirus tab ----------
+// Installs whatever the PC's plan needs (antivirus engine, firewall tool) and shows what happened.
+function setupButton(dev, id, mods, after) {
+  const out = h('pre', { class: 'out hidden' });
+  const btn = actionButton('Set up components', async () => {
+    if (!dev.online) throw new Error('This PC is offline.');
+    out.classList.remove('hidden'); out.textContent = 'Working… installing can take a few minutes.';
+    const r = await runCmd(id, 'module.install', { modules: mods }, { wait: 3000, onProgress: j => { out.textContent = (j.progress || []).slice(-4).join('\n') || 'Working…'; }, keepAlive: true });
+    const comps = ((r && r.result) || r || {}).components || [];
+    out.textContent = comps.map(c => (c.ok ? 'Ready: ' : 'Problem: ') + c.module.toUpperCase() + '\n  ' + (c.steps || []).join('\n  ') + (c.note ? '\n  ' + c.note : '')).join('\n') || 'Nothing to do.';
+    if (after) after();
+  });
+  return h('div', { class: 'stack' }, h('div', { class: 'row tight' }, btn, h('span', { class: 'muted' }, 'Helm does this by itself when a plan is chosen. Use this to retry.')), out);
+}
+
 async function tabAntivirus(body, dev, id) {
   const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
   body.append(box);
+  if (dev.online) body.append(setupButton(dev, id, ['av'], () => setTimeout(() => load(), 1500)));
   const load = async () => {
     let rows; try { rows = (await api('GET', '/api/av')).rows; } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
     const row = rows.find(r => r.id === id) || {};
@@ -198,6 +224,7 @@ async function tabAntivirus(body, dev, id) {
 // ---------- EDR tab ----------
 function tabEdr(body, dev, id) {
   if (!needOnline(dev, body)) return;
+  body.append(setupButton(dev, id, ['edr']));
   const iso = h('div'), view = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
   const mins = h('select', null, [[30, '30 minutes'], [120, '2 hours'], [480, '8 hours'], [1440, '24 hours']].map(([v, l]) => h('option', { value: v, selected: v === 120 }, l)));
   const snap = async () => {
@@ -270,3 +297,18 @@ async function viewAV() {
   };
   load(); every(20000, load);
 }
+
+// ---------- stand-alone session page (terminal / remote screen in its own tab) ----------
+route(/^\/session\/([^/]+)\/(terminal|screen)$/, async (id, kind) => {
+  const app = clear($('#app'));
+  const body = h('div', { class: 'sessionbody' });
+  app.append(h('div', { class: 'sessionpage' }, h('div', { class: 'sessionbar' }, h('span', { class: 'spinner' })), body));
+  let dev;
+  try { dev = await api('GET', '/api/devices/' + id); } catch (e) { body.append(h('div', { class: 'notice bad' }, e.message)); return; }
+  if (!dev.approved || !hasMod(dev, 'rmm')) { body.append(h('div', { class: 'notice warn' }, 'This PC’s plan does not include remote management.')); return; }
+  const title = (kind === 'screen' ? 'Remote screen' : 'Terminal') + ' · ' + dev.name;
+  document.title = title + ' · Helm';
+  clear($('.sessionbar')).append(h('div', { class: 'row', style: { gap: '10px' } }, deviceArt(dev, 28), h('b', null, title), deviceChip(dev)),
+    h('div', { class: 'row tight' }, h('a', { class: 'btn small', href: '#/d/' + id }, 'PC details'), h('button', { class: 'small', onclick: () => window.close() }, 'Close tab')));
+  (kind === 'screen' ? tabScreen : tabTerminal)(body, dev, id);
+});
