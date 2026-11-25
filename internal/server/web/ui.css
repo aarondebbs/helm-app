@@ -223,3 +223,77 @@ html[data-density="compact"] .pc-name .small-text { display: none; } html[data-d
 html[data-density="compact"] .panel { padding: 14px; } html[data-density="compact"] .pcgrid { grid-template-columns: repeat(auto-fill, minmax(204px, 1fr)); gap: 10px; }
 html[data-density="compact"] .pccard-main { padding: 12px 12px 8px; }
 @media (prefers-reduced-motion: reduce) { .swatch:hover { transform: none; } }
+
+/* ---- 1.0: sign-in motion, route progress, welcome ---- */
+.btnspin { display: none; }
+.gbtn.busy { pointer-events: none; opacity: .85; }
+.gbtn.busy .btnspin { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+.gbtn.busy svg { display: none; }
+.loginpage { transition: opacity .26s ease, transform .26s ease; } .loginpage.leaving { opacity: 0; transform: scale(1.015); }
+.welcome { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 0 8px; text-align: center; animation: pageIn .3s ease-out both; }
+.welcome b { font-size: 1.15rem; }
+.welcome-tick { color: var(--accent); }
+.welcome-tick .wc { stroke-dasharray: 145; stroke-dashoffset: 145; animation: draw .55s .05s ease-out forwards; }
+.welcome-tick .wt { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw .35s .5s ease-out forwards; }
+.loadbar { width: 160px; height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 6px; }
+.loadbar i { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); animation: fillbar .9s ease-in-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes fillbar { to { transform: scaleX(1); } }
+#navbar { position: fixed; left: 0; right: 0; top: 0; height: 2px; z-index: 90; pointer-events: none; }
+#navbar i { display: block; height: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); opacity: 0; }
+#navbar.run i { animation: navrun .6s ease-out forwards; }
+@keyframes navrun { 0% { transform: scaleX(0); opacity: 1; } 70% { transform: scaleX(.85); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .welcome, .welcome-tick .wc, .welcome-tick .wt, .loadbar i, #navbar.run i { animation: none; stroke-dashoffset: 0; transform: none; } .loginpage { transition: none; } }
+
+/* ---- 1.0: device side pane ---- */
+.dscrim { position: fixed; inset: 0; z-index: 40; background: rgba(8, 14, 16, .38); animation: fadeIn .18s ease-out both; }
+.dpane { position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(1020px, 72vw); background: var(--bg); border-left: 1px solid var(--line); box-shadow: -18px 0 48px rgba(0, 0, 0, .28);
+  display: flex; flex-direction: column; transform: translateX(28px); opacity: 0; transition: transform .22s cubic-bezier(.2, .7, .2, 1), opacity .18s; }
+.dpane.in { transform: none; opacity: 1; }
+.dloading { padding: 40px; text-align: center; }
+.dhead { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.dtitle { margin: 0; font-size: 1.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 188px minmax(0, 1fr); }
+.dnav { overflow-y: auto; padding: 14px 10px 24px; border-right: 1px solid var(--line); background: var(--panel); }
+.dgroup { margin-bottom: 14px; } .dgname { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0 10px 4px; }
+.dnav a { display: block; padding: 7px 10px; border-radius: 8px; color: var(--text); font-weight: 500; }
+.dnav a:hover { background: var(--hover); text-decoration: none; }
+.dnav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.dmain { overflow-y: auto; padding: 18px 20px 40px; }
+.dbody-in { animation: pageIn .2s ease-out both; }
+.chip.plain.mod-rmm, .chip.plain.mod-av, .chip.plain.mod-edr { background: var(--accent-soft); color: var(--accent); }
+@media (max-width: 900px) { .dpane { width: 100vw; } .dbody { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .dnav { display: flex; gap: 4px; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); } .dgroup { display: contents; } .dgname { display: none; } .dnav a { white-space: nowrap; } }
+@media (prefers-reduced-motion: reduce) { .dpane { transition: none; transform: none; opacity: 1; } .dscrim, .dbody-in { animation: none; } }
+@keyframes fadeIn { from { opacity: 0; } }
+
+/* ---- modules ---- */
+.modgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.modcard { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 16px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--panel); cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
+.modcard:hover { border-color: var(--accent-line); transform: translateY(-1px); }
+.modcard.on { border-color: var(--accent); background: var(--accent-soft); }
+.modcard input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.modcard:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.modname { display: flex; flex-direction: column; } .modname b { font-size: 1.05rem; }
+.modtext { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.modtick { position: absolute; top: 10px; right: 12px; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 13px; color: var(--accent-text); }
+.modcard.on .modtick { background: var(--accent); border-color: var(--accent); }
+.onboard h3 { font-size: 1rem; }
+
+/* ---- connect a PC ---- */
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.waitbox { display: flex; gap: 14px; align-items: center; margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--panel2); border: 1px dashed var(--line); }
+.pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent); animation: pulse 1.6s infinite; flex: none; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 12px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+
+/* ---- Google setup ---- */
+.gstep { display: flex; gap: 14px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.gnum { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-text); display: grid; place-items: center; font-weight: 650; font-size: 13px; }
+.dropzone { display: flex; flex-direction: column; gap: 2px; align-items: center; padding: 18px; border: 2px dashed var(--line); border-radius: 12px; cursor: pointer; text-align: center; transition: border-color .15s, background .15s; }
+.dropzone:hover, .dropzone.over, .dropzone:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+
+.osgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 4px; }
+.oscard { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); transition: border-color .15s, transform .15s; }
+.oscard:hover { border-color: var(--accent-line); transform: translateY(-2px); }
+.osart { font-size: 2rem; line-height: 1; } .oscard b { font-size: 1.1rem; } .oscard .muted { flex: 1; min-height: 3em; }

@@ -189,6 +189,7 @@ type dbData struct {
 	Sessions  []*SessionRec        `json:"sessions"`
 	Seen      map[string]time.Time `json:"seen,omitempty"`
 	Inventory map[string]*InvRec   `json:"inventory,omitempty"`
+	AV        map[string]*AVRec    `json:"av,omitempty"`       // device id -> antivirus intelligence state
 	Accepted  map[string]AcceptRec `json:"accepted,omitempty"` // finding key -> accepted risk
 	NoFix     map[string]time.Time `json:"noFix,omitempty"`    // "deviceID|software" -> when an update was found to be unavailable
 	Tasks     []TaskRec            `json:"tasks,omitempty"`    // finished tasks of the last week
@@ -385,6 +386,9 @@ func (d *dbData) normalize() {
 	}
 	if d.Schedules == nil {
 		d.Schedules = map[string]*Schedule{}
+	}
+	if d.AV == nil {
+		d.AV = map[string]*AVRec{}
 	}
 	if d.Inventory == nil {
 		d.Inventory = map[string]*InvRec{}

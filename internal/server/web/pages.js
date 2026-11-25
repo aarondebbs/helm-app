@@ -61,19 +61,33 @@ function googlePanel() {
     let g; try { g = await api('GET', '/api/settings/google'); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
     const id = h('input', { type: 'text', value: g.clientId, autocomplete: 'off', spellcheck: 'false', placeholder: '123456789-abc.apps.googleusercontent.com' });
     const secret = h('input', { type: 'password', autocomplete: 'off', placeholder: g.secretSet ? '•••••••• (saved)' : 'Client secret' });
-    const email = h('input', { type: 'email', value: g.email, autocomplete: 'off', placeholder: 'you@gmail.com' });
+    const email = h('input', { type: 'email', value: g.email || S.email || '', autocomplete: 'off', placeholder: 'you@gmail.com' });
+    // Google offers the OAuth client as a .json download: drop it here instead of copying two values by hand.
+    const fromJSON = text => {
+      let j; try { j = JSON.parse(text); } catch (e) { return false; }
+      const c = j.web || j.installed || j; if (!c || !c.client_id) return false;
+      id.value = c.client_id; if (c.client_secret) secret.value = c.client_secret; toast('Read the client ID and secret from the file', 'ok'); return true;
+    };
+    const file = h('input', { type: 'file', accept: 'application/json,.json', class: 'hidden', onchange: async () => { const f = file.files[0]; if (f && !fromJSON(await f.text())) toast('That file is not a Google OAuth client file', 'bad'); } });
+    const drop = h('div', { class: 'dropzone', tabindex: 0, role: 'button', onclick: () => file.click(), onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') file.click(); },
+      ondragover: e => { e.preventDefault(); drop.classList.add('over'); }, ondragleave: () => drop.classList.remove('over'),
+      ondrop: async e => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f && !fromJSON(await f.text())) toast('That file is not a Google OAuth client file', 'bad'); } },
+      h('b', null, 'Drop the downloaded client file here'), h('span', { class: 'muted small-text' }, 'client_secret_….json from Google: fills the ID and secret for you'));
+    id.addEventListener('paste', e => { const t = (e.clipboardData || window.clipboardData).getData('text'); if (t.trim().startsWith('{') && fromJSON(t)) e.preventDefault(); });
+    const origin = location.origin;
+    const step = (n, title, ...kids) => h('div', { class: 'gstep' }, h('span', { class: 'gnum' }, String(n)), h('div', { class: 'stack', style: { gap: '8px', flex: 1 } }, h('b', null, title), ...kids));
+    const copyRow = (label, val) => h('label', { class: 'field' }, h('span', null, label), h('div', { class: 'row', style: { flexWrap: 'nowrap' } }, h('input', { type: 'text', readOnly: true, value: val, style: { flex: 1 } }), copyButton(() => val)));
     clear(box).append(
-      h('div', { class: g.enabled ? 'notice ok' : 'notice' }, g.enabled ? 'Google sign-in is on. The sign-in page shows a Google button.' : 'Google sign-in is off. Fill in the three fields below to turn it on.'),
-      h('ol', { class: 'small-text', style: { margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '4px' } },
-        h('li', null, 'In the Google Cloud console, create a project and open APIs & Services, then OAuth consent screen. Choose External and add your Gmail address as a test user.'),
-        h('li', null, 'Open Credentials, create an OAuth client ID of type Web application, and add the redirect address below as an authorized redirect URI.'),
-        h('li', null, 'Paste the client ID and client secret here, enter the Gmail address that may sign in, and save.')),
-      h('label', { class: 'field' }, h('span', null, 'Redirect address'), h('div', { class: 'row', style: { flexWrap: 'nowrap' } }, h('input', { type: 'text', readOnly: true, value: g.redirectUri, style: { flex: 1 } }), copyButton(() => g.redirectUri))),
-      h('label', { class: 'field' }, h('span', null, 'Client ID'), id),
-      h('label', { class: 'field' }, h('span', null, 'Client secret'), secret),
-      h('label', { class: 'field' }, h('span', null, 'Google address that may sign in'), email, h('span', { class: 'hint' }, 'Only this account is let in. The password and authenticator code keep working as a fallback.')),
-      h('div', { class: 'row' }, actionButton('Save', async () => { await api('PUT', '/api/settings/google', { clientId: id.value, clientSecret: secret.value, email: email.value }); toast('Google sign-in saved', 'ok'); draw(); }, 'primary'),
-        g.clientId ? actionButton('Turn off and remove', async () => { if (await confirmDialog('Remove the Google sign-in settings?', 'Remove', true)) { await api('PUT', '/api/settings/google', { clear: true }); draw(); } }, 'danger') : null),
+      h('div', { class: g.enabled ? 'notice ok' : 'notice' }, g.enabled ? 'Google sign-in is on. The sign-in page shows a Google button.' : 'Google sign-in is off. Four short steps turn it on; the first two are done in Google’s page.'),
+      step(1, 'Create the sign-in client in Google', h('p', { class: 'muted small-text', style: { margin: 0 } }, 'Choose “Web application” and a name such as Helm. Under “Authorized redirect URIs” add the address below.'),
+        copyRow('Authorized redirect URI', g.redirectUri), copyRow('Authorized JavaScript origin (if asked)', origin),
+        h('div', null, h('a', { class: 'btn', href: 'https://console.cloud.google.com/apis/credentials/oauthclient', target: '_blank', rel: 'noopener' }, 'Open Google Cloud: create OAuth client'))),
+      step(2, 'Download the client file', h('p', { class: 'muted small-text', style: { margin: 0 } }, 'After creating it, press “Download JSON”. First time only: on the consent screen choose External and add your address as a test user.'), drop, file),
+      step(3, 'Check the details', h('label', { class: 'field' }, h('span', null, 'Client ID'), id), h('label', { class: 'field' }, h('span', null, 'Client secret'), secret),
+        h('label', { class: 'field' }, h('span', null, 'Google address that may sign in'), email, h('span', { class: 'hint' }, 'Only this account is let in. Your password and authenticator code keep working as a fallback.'))),
+      step(4, 'Save and try it', h('div', { class: 'row' }, actionButton('Save', async () => { await api('PUT', '/api/settings/google', { clientId: id.value, clientSecret: secret.value, email: email.value }); toast('Google sign-in saved', 'ok'); draw(); }, 'primary'),
+        g.enabled ? h('a', { class: 'btn', href: '/api/auth/google/start' }, 'Test sign-in') : null,
+        g.clientId ? actionButton('Turn off and remove', async () => { if (await confirmDialog('Remove the Google sign-in settings?', 'Remove', true)) { await api('PUT', '/api/settings/google', { clear: true }); draw(); } }, 'danger') : null)),
       h('p', { class: 'muted small-text' }, 'Signing in with Google replaces the password and code at the sign-in page. Sensitive changes (settings, backups, commands that need confirmation) still ask for your authenticator code.'));
   };
   draw();
@@ -527,6 +541,7 @@ async function viewAccount() {
   setTimeout(drawTotp, 0);
   clear($('#acct')).append(
     h('div', { class: 'stack' },
+      profilePanel(),
       panel('Username', 'The name you sign in with', null, h('div', { class: 'stack' },
         h('label', { class: 'field' }, h('span', null, 'Username'), nu),
         h('label', { class: 'field' }, h('span', null, 'Current password'), pw1),
@@ -588,6 +603,18 @@ async function drawTotp() {
 
 
 // ---------- console users (owner manages; everyone can see the panel only if they are the owner) ----------
+function profilePanel() {
+  const fn = h('input', { type: 'text', value: S.fullName || '', maxlength: '80', autocomplete: 'name', placeholder: 'e.g. Aaron Debono' });
+  const em = h('input', { type: 'email', value: S.email || '', autocomplete: 'email', placeholder: 'you@example.com' });
+  const ti = h('input', { type: 'text', value: S.title || '', maxlength: '60', autocomplete: 'organization-title', placeholder: 'e.g. IT manager' });
+  return panel('Profile', 'How you appear in the console', null, h('div', { class: 'stack' },
+    h('label', { class: 'field' }, h('span', null, 'Full name'), fn), h('label', { class: 'field' }, h('span', null, 'Email'), em), h('label', { class: 'field' }, h('span', null, 'Job title'), ti),
+    h('div', null, actionButton('Save profile', async () => {
+      const r = await api('PUT', '/api/account/profile', { fullName: fn.value, email: em.value, title: ti.value });
+      S.fullName = r.fullName; S.email = r.email; S.title = r.title; toast('Profile saved', 'ok'); const m = $('.usermenu'); if (m) m.replaceWith(userMenu());
+    }, 'primary'))));
+}
+
 function usersPanel() {
   const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
   const pan = panel('Console users', 'Admins can change anything. Viewers can look but not change.', null, box);
@@ -606,11 +633,11 @@ function usersPanel() {
     let r;
     try { r = await api('GET', '/api/users'); } catch (e) { pan.remove(); return; }
     if (!r.canManage) { clear(box).append(h('div', { class: 'muted' }, 'Only the owner can add or remove users.'), ...r.users.map(u => h('div', null, u.user + ' · ' + u.role))); return; }
-    const nu = h('input', { type: 'text', placeholder: 'Username', autocomplete: 'off' });
+    const nu = h('input', { type: 'text', placeholder: 'Username', autocomplete: 'off' }), nfn = h('input', { type: 'text', placeholder: 'Full name', autocomplete: 'off' }), nem = h('input', { type: 'email', placeholder: 'Email', autocomplete: 'off' });
     const np = h('input', { type: 'password', placeholder: 'Starting password', autocomplete: 'new-password' });
     const nr = h('select', null, h('option', { value: 'admin' }, 'Admin'), h('option', { value: 'viewer' }, 'Viewer (read only)'));
     const shown = h('div');
-    const rows = r.users.map(u => h('tr', null, h('td', null, u.user, u.owner ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, 'owner') : null),
+    const rows = r.users.map(u => h('tr', null, h('td', null, h('b', null, u.fullName || u.user), u.fullName ? h('span', { class: 'muted' }, ' · ' + u.user) : null, u.owner ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, 'owner') : null, u.email || u.title ? h('div', { class: 'muted small-text' }, [u.title, u.email].filter(Boolean).join(' · ')) : null),
       h('td', null, u.role), h('td', null, u.totp ? 'on' : 'off'),
       h('td', { class: 'right' }, u.owner ? '' : h('span', { class: 'row' },
         actionButton('Reset sign-in', async () => {
@@ -624,9 +651,9 @@ function usersPanel() {
           await api('POST', '/api/users/remove', { user: u.user }); toast('User removed.', 'ok'); load();
         }, 'danger')))));
     clear(box).append(table(['User', 'Access', 'Authenticator', ''].map(x => ({ label: x })), rows),
-      h('div', { class: 'row' }, nu, np, nr, actionButton('Add user', async () => {
-        const k = await api('POST', '/api/users', { user: nu.value, password: np.value, role: nr.value });
-        nu.value = np.value = ''; load(keyCard(k));
+      h('div', { class: 'row' }, nfn, nem, nu, np, nr, actionButton('Add user', async () => {
+        const k = await api('POST', '/api/users', { user: nu.value, password: np.value, role: nr.value, fullName: nfn.value, email: nem.value });
+        nu.value = np.value = nfn.value = nem.value = ''; load(keyCard(k));
       }, 'primary')), shown);
     if (card) shown.append(card);
   };
@@ -656,7 +683,7 @@ async function viewNetwork() {
       const status = x.managed ? h('a', { href: '#/devices/' + x.managed }, 'Managed · ' + (x.managedName || '')) : h('span', { class: 'muted' }, 'Not managed');
       let act = '';
       if (!x.managed && x.kind === 'windows') act = h('button', { class: 'small', onclick: () => installDialog(x) }, 'Install Helm…');
-      else if (!x.managed && x.kind === 'linux') act = h('span', { class: 'muted small-text' }, 'Install from Add a PC');
+      else if (!x.managed && x.kind === 'linux') act = h('span', { class: 'muted small-text' }, 'Install from Download agent');
       return h('tr', null, h('td', { class: 'mono' }, x.ip), h('td', null, x.name || ''), h('td', { class: 'mono' }, x.mac || ''), h('td', null, kind), h('td', { class: 'mono muted' }, (x.ports || []).join(' ')), h('td', null, status), h('td', { class: 'right' }, act));
     });
     out.append(h('div', { class: 'muted', style: { padding: '10px 18px' } }, res.hosts.length + ' devices on ' + res.cidr + ' · ' + fmtTime(res.at)),

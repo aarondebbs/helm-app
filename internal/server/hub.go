@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,6 +57,44 @@ var commands = map[string]cmdSpec{
 	"winget.uninstall": {false, 2 * time.Hour},
 	"pkg.install":      {false, 3 * time.Hour},
 	"fix.apply":        {false, 10 * time.Minute},
+	// antivirus and EDR modules
+	"av.status":    {false, 90 * time.Second},
+	"av.scan":      {false, 4*time.Hour + time.Minute},
+	"av.update":    {false, 25 * time.Minute},
+	"av.threats":   {false, 90 * time.Second},
+	"edr.snapshot": {false, 3 * time.Minute},
+	"edr.isolate":  {true, 2 * time.Minute},
+	"edr.release":  {false, 2 * time.Minute},
+}
+
+// cmdModules lists which modules unlock a command. nil means every PC may be sent it.
+func cmdModules(name string) []string {
+	switch {
+	case strings.HasPrefix(name, "av."):
+		return []string{"av"}
+	case strings.HasPrefix(name, "edr."):
+		return []string{"edr"}
+	case name == "process.list", name == "process.kill", name == "eventlog":
+		return []string{"rmm", "edr"}
+	case strings.HasPrefix(name, "scan."), name == "inventory", name == "ping", name == "drives.list", name == "software.list":
+		return nil
+	}
+	return []string{"rmm"}
+}
+
+func modulesAllow(have []string, name string) bool {
+	need := cmdModules(name)
+	if need == nil {
+		return true
+	}
+	for _, n := range need {
+		for _, h := range have {
+			if n == h {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Job tracks one command sent to an agent.
@@ -86,6 +125,13 @@ type Agent struct {
 	Stats    *proto.Stats
 	StatsAt  time.Time
 	mu       sync.Mutex
+	mods     atomic.Value // []string: the modules switched on for this PC
+}
+
+func (a *Agent) setModules(m []string) { a.mods.Store(m) }
+func (a *Agent) modules() []string {
+	m, _ := a.mods.Load().([]string)
+	return m
 }
 
 type chanWait struct {
@@ -131,6 +177,7 @@ func (h *Hub) refuse(sid, reason string) {
 var (
 	errOffline  = errors.New("device is offline")
 	errPending  = errors.New("device is not approved yet")
+	errModule   = errors.New("that action is not part of the plan chosen for this PC (change the plan under Plan & modules)")
 	errUnknownC = errors.New("unknown command")
 )
 
@@ -201,6 +248,9 @@ func (h *Hub) dispatch(deviceID, name string, args json.RawMessage, actor string
 	}
 	if !a.approved.Load() {
 		return nil, errPending
+	}
+	if !modulesAllow(a.modules(), name) {
+		return nil, errModule
 	}
 	j := &Job{ID: randHex(8), DeviceID: deviceID, Name: name, Args: args, Created: time.Now().UTC(),
 		Status: "running", Actor: actor, done: make(chan struct{})}
@@ -344,6 +394,9 @@ func (h *Hub) openChannel(deviceID, kind string, args any, wait time.Duration) (
 	}
 	if !a.approved.Load() {
 		return nil, errPending
+	}
+	if !modulesAllow(a.modules(), "exec") { // terminal, screen and file transfer belong to the RMM module
+		return nil, errModule
 	}
 	sid := randHex(12)
 	ch := h.expectChannel(sid, deviceID, kind)

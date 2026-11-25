@@ -351,15 +351,15 @@ details.release[open] > summary { background: var(--panel2); }
 
 /* ---------- the sign-in's look, everywhere ----------
    Ink sidebar with a teal marker, rounded surfaces, round status lights that beat like the fleet on the sign-in page. */
-:root, html[data-theme="dark"] { --nav: var(--ink); --nav2: rgba(95, 208, 196, .13); --nav-text: #b3c4bf; --nav-mute: #7b8f89; --nav-line: rgba(255, 255, 255, .07); --nav-active: #5fd0c4; }
+:root, html[data-theme="dark"] { --nav: var(--ink); --nav2: color-mix(in srgb, var(--side-accent, #5fd0c4) 13%, transparent); --nav-text: #b3c4bf; --nav-mute: #7b8f89; --nav-line: rgba(255, 255, 255, .07); --nav-active: var(--side-accent, #5fd0c4); }
 .sidebar { background: var(--nav); border-right: 0; }
-.brand { height: 60px; font-size: 1.3rem; color: #fff; border-bottom: 1px solid var(--nav-line); } .brand span { color: #fff; } .brand svg { color: #5fd0c4; width: 26px; height: 26px; }
+.brand { height: 60px; font-size: 1.3rem; color: #fff; border-bottom: 1px solid var(--nav-line); } .brand span { color: #fff; } .brand svg { color: var(--side-accent, #5fd0c4); width: 26px; height: 26px; }
 .navgroup { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--nav-mute); padding: 20px 20px 6px; }
 .navlink { border-radius: 8px; padding: 8px 12px; transition: background .12s, color .12s; }
 .navlink:hover { background: rgba(255, 255, 255, .06); color: #fff; }
-.navlink.active { background: var(--nav2); color: #fff; }
-.navlink.active::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: #5fd0c4; }
-.navlink.active .ico { stroke: #5fd0c4; }
+.navlink.active { background: color-mix(in srgb, var(--side-accent, #5fd0c4) 14%, var(--nav2)); color: #fff; }
+.navlink.active::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--side-accent, #5fd0c4); }
+.navlink.active .ico { stroke: var(--side-accent, #5fd0c4); }
 .sidefoot { border-top-color: var(--nav-line); }
 .topbar { height: 56px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .container { padding-top: 30px; }

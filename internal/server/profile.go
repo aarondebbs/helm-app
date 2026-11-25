@@ -48,7 +48,8 @@ func cleanProfile(p *Profile) (*Profile, error) {
 		}
 	}
 	c.Tags = tags
-	if c.Group == "" && len(c.Tags) == 0 && c.NamePrefix == "" && !c.AutoApprove && c.Org == "" && c.SupportText == "" && !c.HideTray && !c.NoSupportBtn && c.Accent == "" && c.Logo == "" {
+	c.Modules = cleanModules(c.Modules)
+	if c.Group == "" && len(c.Tags) == 0 && c.NamePrefix == "" && !c.AutoApprove && c.Org == "" && c.SupportText == "" && !c.HideTray && !c.NoSupportBtn && c.Accent == "" && c.Logo == "" && len(c.Modules) == 0 {
 		return nil, nil
 	}
 	return &c, nil

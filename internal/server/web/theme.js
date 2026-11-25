@@ -24,6 +24,9 @@ function helmApplyLook() {
   root.setAttribute('data-theme', dark ? 'dark' : 'light');
   root.setAttribute('data-density', look.density);
   var v = HELM_ACCENTS[look.accent][dark ? 'd' : 'l'], names = ['--accent', '--accent-hover', '--accent-soft', '--accent-text', '--accent-line'];
+  // The side pane is always ink-dark, so it takes the light variant of the accent in both modes.
+  root.style.setProperty('--side-accent', HELM_ACCENTS[look.accent].d[0]);
+  root.style.setProperty('--side-accent-soft', HELM_ACCENTS[look.accent].d[2]);
   for (var i = 0; i < names.length; i++) {
     if (look.accent === 'teal') root.style.removeProperty(names[i]); else root.style.setProperty(names[i], v[i]);
   }

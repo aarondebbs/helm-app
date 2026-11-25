@@ -27,6 +27,9 @@ type Admin struct {
 	LastStep   int64     `json:"lastStep"`       // last accepted TOTP time step (replay protection)
 	Role       string    `json:"role,omitempty"` // "" or "admin": full access; "viewer": read only
 	Created    time.Time `json:"created,omitempty"`
+	FullName   string    `json:"fullName,omitempty"`
+	Email      string    `json:"email,omitempty"`
+	Title      string    `json:"title,omitempty"` // job title, shown on the account page
 }
 
 // Device is a managed PC.
@@ -44,6 +47,45 @@ type Device struct {
 	Tags       []string     `json:"tags,omitempty"`
 	Hello      *proto.Hello `json:"hello,omitempty"`
 	Profile    *Profile     `json:"profile,omitempty"` // deploy profile of the token it enrolled with
+	Modules    []string     `json:"modules,omitempty"` // plan chosen at onboarding: any of rmm, av, edr
+	Onboarded  bool         `json:"onboarded,omitempty"`
+}
+
+// Modules a device can be given. The agent is the same everywhere; the server only sends the commands of
+// the modules that were switched on for that PC.
+var allModules = []string{"rmm", "av", "edr"}
+
+func cleanModules(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range allModules {
+		for _, x := range in {
+			if x == m && !seen[m] {
+				seen[m] = true
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+func (d Device) effectiveModules() []string {
+	if !d.Onboarded && len(d.Modules) == 0 {
+		return []string{"rmm"}
+	}
+	return d.Modules
+}
+
+func (d *Device) has(mod string) bool {
+	if !d.Onboarded && len(d.Modules) == 0 { // devices from before 1.0 keep full management
+		return mod == "rmm"
+	}
+	for _, m := range d.Modules {
+		if m == mod {
+			return true
+		}
+	}
+	return false
 }
 
 // Token is an enrollment token.
@@ -69,8 +111,9 @@ type Profile struct {
 	SupportText  string   `json:"supportText,omitempty"`
 	HideTray     bool     `json:"hideTray,omitempty"`
 	NoSupportBtn bool     `json:"noSupportBtn,omitempty"`
-	Accent       string   `json:"accent,omitempty"` // brand colour #rrggbb
-	Logo         string   `json:"logo,omitempty"`   // PNG as a data URL, at most 64 KB
+	Accent       string   `json:"accent,omitempty"`  // brand colour #rrggbb
+	Logo         string   `json:"logo,omitempty"`    // PNG as a data URL, at most 64 KB
+	Modules      []string `json:"modules,omitempty"` // plan preset for PCs that enrol with AutoApprove
 }
 
 type data struct {
@@ -259,12 +302,30 @@ func (s *Store) CreateToken(label string, ttl time.Duration, maxUses int) (strin
 	return s.CreateTokenP(label, ttl, maxUses, nil)
 }
 
+// tokenTTL is how long an enrollment token lives. Every token is for exactly one PC.
+const tokenTTL = 30 * time.Minute
+
 func (s *Store) CreateTokenP(label string, ttl time.Duration, maxUses int, pf *Profile) (string, Token, error) {
+	ttl, maxUses = tokenTTL, 1
+	s.purgeTokens()
 	plain := "hlm_" + randHex(20)
 	t := Token{ID: randHex(6), Label: label, Hash: sha256hex(plain), CreatedAt: time.Now().UTC(),
 		ExpiresAt: time.Now().UTC().Add(ttl), MaxUses: maxUses, Profile: pf}
 	err := s.update(func(d *data) error { d.Tokens[t.ID] = &t; return nil })
 	return plain, t, err
+}
+
+// purgeTokens drops tokens that are used up, revoked or past their expiry.
+func (s *Store) purgeTokens() {
+	_ = s.update(func(d *data) error {
+		now := time.Now()
+		for id, t := range d.Tokens {
+			if t.Revoked || now.After(t.ExpiresAt.Add(24*time.Hour)) || (t.MaxUses > 0 && t.Uses >= t.MaxUses && now.After(t.CreatedAt.Add(time.Hour))) {
+				delete(d.Tokens, id)
+			}
+		}
+		return nil
+	})
 }
 
 var errBadToken = errors.New("invalid or expired enrollment token")
@@ -293,7 +354,13 @@ func (s *Store) Enroll(token string, h0 proto.Hello, ip string) (id, secret stri
 		if pf := tk.Profile; pf != nil {
 			c := *pf
 			dev.Profile = &c
-			dev.Group, dev.Tags, dev.Approved = pf.Group, append([]string(nil), pf.Tags...), pf.AutoApprove
+			dev.Group, dev.Tags = pf.Group, append([]string(nil), pf.Tags...)
+			if pf.AutoApprove { // an IT team that already knows the plan skips the onboarding screen
+				dev.Approved, dev.Onboarded = true, true
+				if dev.Modules = cleanModules(pf.Modules); len(dev.Modules) == 0 {
+					dev.Modules = []string{"rmm"}
+				}
+			}
 			if pf.NamePrefix != "" {
 				dev.Name = pf.NamePrefix + h.Hostname
 			}
@@ -443,6 +510,18 @@ func (s *Store) addUser(user, password, role string) (string, error) {
 		return nil
 	})
 	return secret, err
+}
+
+// setProfile stores the display details of a console user.
+func (s *Store) setProfile(user, full, email, title string) error {
+	return s.update(func(d *data) error {
+		u := d.findUser(user)
+		if u == nil {
+			return errors.New("no such user")
+		}
+		u.FullName, u.Email, u.Title = full, email, title
+		return nil
+	})
 }
 
 func (s *Store) removeUser(user string) error {

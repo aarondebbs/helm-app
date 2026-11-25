@@ -94,7 +94,7 @@ func New(cfg Config) (*Server, error) {
 	s.cve = newCVEEngine(cfg.DataDir, func() string { return s.db.settings().NVDKey })
 	s.tunnels = newTunnelMgr(s)
 	s.tasks = newTaskBook()
-	s.hub.onFinish = s.storeInventory
+	s.hub.onFinish = func(j Job) { s.storeInventory(j); s.storeAV(j) }
 	s.hookTasks()
 	s.upd = newUpdater(cfg)
 	s.upd.exit = func() { s.Close(); os.Exit(0) }
@@ -111,7 +111,7 @@ func (s *Server) Store() *Store { return s.st }
 // StartBackground launches the alert engine, scheduler and CVE downloader.
 func (s *Server) StartBackground() {
 	s.cve.start()
-	s.wg.Add(7)
+	s.wg.Add(8)
 	go s.loop(time.Hour, s.autoBackup)
 	go s.loop(6*time.Hour, s.autoUpdateCheck)
 	go s.loop(10*time.Minute, s.autoInventory)
@@ -121,6 +121,7 @@ func (s *Server) StartBackground() {
 	go s.loop(15*time.Second, s.runDueSchedules)
 	go s.loop(5*time.Minute, s.autoScan)
 	go s.loop(2*time.Minute, s.autoPatch)
+	go s.loop(20*time.Minute, s.autoAV)
 }
 
 func (s *Server) loop(every time.Duration, fn func()) {
@@ -224,6 +225,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/update/agents", s.authed(s.handleUpdateAgents, true))
 	mux.HandleFunc("POST /api/update/server", s.authed(s.handleUpdateServer, true))
 	mux.HandleFunc("GET /api/devices/{id}/inventory", s.authed(s.handleDeviceInventory, false))
+	mux.HandleFunc("PUT /api/account/profile", s.authed(s.handleProfileSet, true))
 	mux.HandleFunc("POST /api/account/password", s.authed(s.handleChangePassword, true))
 	mux.HandleFunc("POST /api/account/username", s.authed(s.handleChangeUsername, true))
 	mux.HandleFunc("POST /api/stepup", s.authed(s.handleStepUp, true))
@@ -231,6 +233,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/devices", s.authed(s.handleDevices, false))
 	mux.HandleFunc("GET /api/devices/{id}", s.authed(s.handleDevice, false))
 	mux.HandleFunc("POST /api/devices/{id}/approve", s.authed(s.handleApprove, true))
+	mux.HandleFunc("GET /api/av", s.authed(s.handleAV, false))
+	mux.HandleFunc("POST /api/av/update", s.authed(s.handleAVUpdateAll, true))
+	mux.HandleFunc("POST /api/devices/{id}/onboard", s.authed(s.handleOnboard, true))
+	mux.HandleFunc("POST /api/devices/{id}/modules", s.authed(s.handleModules, true))
 	mux.HandleFunc("POST /api/devices/{id}/edit", s.authed(s.handleEdit, true))
 	mux.HandleFunc("DELETE /api/devices/{id}", s.authed(s.handleDeleteDevice, true))
 	mux.HandleFunc("POST /api/devices/{id}/cmd", s.authed(s.handleCmd, true))

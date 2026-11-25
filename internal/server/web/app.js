@@ -393,8 +393,8 @@ const LOGO = () => {
 
 const NAV = [
   ['Work', [['#/', 'Home', 'dash', 'dashboard'], ['#/devices', 'PCs', 'devices', 'devices'], ['#/inbox', 'Inbox', 'chat', 'inbox'], ['#/alerts', 'Alerts', 'bell', 'alerts']]],
-  ['Fleet', [['#/security', 'Security', 'shield', 'security'], ['#/software', 'Software', 'box', 'software'], ['#/automation', 'Automation', 'zap', 'automation'], ['#/network', 'Network', 'net', 'network'], ['#/sessions', 'Sessions', 'video', 'sessions']]],
-  ['Admin', [['#/enroll', 'Add a PC', 'plus', 'enroll'], ['#/reports', 'Reports', 'file', 'reports'], ['#/activity', 'Activity log', 'list', 'activity'], ['#/settings', 'Settings', 'gear', 'settings']]],
+  ['Fleet', [['#/security', 'Security', 'shield', 'security'], ['#/av', 'Antivirus', 'shield', 'av'], ['#/software', 'Software', 'box', 'software'], ['#/automation', 'Automation', 'zap', 'automation'], ['#/network', 'Network', 'net', 'network'], ['#/sessions', 'Sessions', 'video', 'sessions']]],
+  ['Admin', [['#/enroll', 'Download agent', 'download', 'enroll'], ['#/reports', 'Reports', 'file', 'reports'], ['#/activity', 'Activity log', 'list', 'activity'], ['#/settings', 'Settings', 'gear', 'settings']]],
 ];
 // Bottom bar on phones: the four places used most, and More for everything else.
 const TABBAR = [['#/', 'Home', 'dash', 'dashboard'], ['#/devices', 'PCs', 'devices', 'devices'], ['#/inbox', 'Inbox', 'chat', 'inbox'], ['#/alerts', 'Alerts', 'bell', 'alerts']];
@@ -447,11 +447,11 @@ function globalSearch() {
 
 function userMenu() {
   const m = h('div', { class: 'menu hidden' },
-    h('div', { class: 'menu-head' }, h('b', null, S.user), h('span', { class: 'muted small-text' }, 'Administrator')),
+    h('div', { class: 'menu-head' }, h('b', null, S.fullName || S.user), h('span', { class: 'muted small-text' }, S.email || (S.role === 'viewer' ? 'Viewer' : 'Administrator'))),
     h('a', { href: '#/account', onclick: () => m.classList.add('hidden') }, icon('gear'), 'My account'),
     h('button', { class: 'ghost', onclick: logout }, icon('out'), 'Sign out'));
   const b = h('button', { class: 'userbtn', 'aria-label': 'Account menu', onclick: e => { e.stopPropagation(); m.classList.toggle('hidden'); } },
-    h('span', { class: 'avatar' }, (S.user || '?')[0]), h('span', { class: 'uname' }, S.user));
+    h('span', { class: 'avatar' }, ((S.fullName || S.user || '?').trim()[0] || '?').toUpperCase()), h('span', { class: 'uname' }, S.fullName || S.user));
   document.addEventListener('click', () => m.classList.add('hidden'));
   return h('div', { class: 'usermenu' }, b, m);
 }
@@ -474,7 +474,7 @@ function shell(active, content) {
     h('button', { class: 'tab', 'aria-label': 'More', onclick: () => side.classList.toggle('open') }, h('span', { class: 'tico' }, icon('more')), h('span', null, 'More')));
   const scrim = h('div', { class: 'scrim', onclick: () => side.classList.remove('open') });
   app.append(h('div', { class: 'app' }, side, scrim, h('div', { class: 'main' },
-    h('div', { class: 'topbar' }, h('button', { class: 'ghost icon menu-btn', 'aria-label': 'Menu', onclick: () => side.classList.toggle('open') }, icon('menu')), globalSearch(), h('div', { class: 'spacer' }), h('a', { class: 'btn primary', href: '#/enroll' }, icon('plus'), 'Add a PC'), themeButton(), userMenu()),
+    h('div', { class: 'topbar' }, h('button', { class: 'ghost icon menu-btn', 'aria-label': 'Menu', onclick: () => side.classList.toggle('open') }, icon('menu')), globalSearch(), h('div', { class: 'spacer' }), h('a', { class: 'btn primary', href: '#/enroll' }, icon('download'), 'Download agent'), themeButton(), userMenu()),
     bodyEl), tabbar));
   paintBadges(); refreshAlertCount();
   return bodyEl;
@@ -586,7 +586,7 @@ function showLogin(msg) {
   fetch('/api/auth/config').then(r => r.json()).then(c => {
     if (c && c.totp === false) { codeField.classList.add('hidden'); code.required = false; }
     if (c && c.brand && (c.brand.name || c.brand.logo)) { const bb = $('.loginbrand'); if (bb) { clear(bb); S.brand = c.brand; bb.append(...brandMark()); } }
-    if (c && c.google) { gbox.append(h('a', { class: 'gbtn', href: '/api/auth/google/start' }, GLOGO(), h('span', null, 'Continue with Google'))); gbox.classList.remove('hidden'); orline.classList.remove('hidden'); }
+    if (c && c.google) { const gl = h('span', null, 'Continue with Google'); gbox.append(h('a', { class: 'gbtn', href: '/api/auth/google/start', onclick: e => { e.currentTarget.classList.add('busy'); gl.textContent = 'Opening Google…'; } }, h('span', { class: 'btnspin dark', 'aria-hidden': 'true' }), GLOGO(), gl)); gbox.classList.remove('hidden'); orline.classList.remove('hidden'); }
   }).catch(() => { /* password sign-in still works */ });
   const ssoErr = new URLSearchParams(location.search).get('sso_error');
   if (ssoErr) { msg = ssoErr; history.replaceState(null, '', location.pathname + location.hash); }
@@ -598,15 +598,31 @@ function showLogin(msg) {
     err.textContent = text; err.classList.remove('hidden'); code.value = '';
     card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); if (fx) fx.deny();
   };
+  const btnText = h('span', null, 'Sign in');
+  btn.textContent = ''; btn.append(h('span', { class: 'btnspin', 'aria-hidden': 'true' }), btnText);
+  const welcome = (who) => {
+    // The card turns into a short welcome while the console loads: a tick draws itself and a bar fills.
+    const page = $('.loginpage');
+    clear(card).append(h('div', { class: 'welcome', role: 'status' },
+      h('svg', { viewBox: '0 0 52 52', width: 56, height: 56, class: 'welcome-tick', 'aria-hidden': 'true', innerHTML: '<circle cx="26" cy="26" r="23" fill="none" stroke="currentColor" stroke-width="3" class="wc"/><path d="M15 27l7 7 15-16" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="wt"/>' }),
+      h('b', null, 'Welcome back' + (who ? ', ' + who : '')), h('span', { class: 'muted small-text' }, 'Opening your console'), h('div', { class: 'loadbar' }, h('i'))));
+    return new Promise(r => setTimeout(() => { if (page) page.classList.add('leaving'); setTimeout(r, 260); }, 900));
+  };
   const form = h('form', { class: 'stack', onsubmit: async e => {
-    e.preventDefault(); btn.disabled = true; btn.classList.add('busy'); err.classList.add('hidden');
+    e.preventDefault(); btn.disabled = true; btn.classList.add('busy'); btnText.textContent = 'Signing in…'; err.classList.add('hidden');
+    let ok = false;
     try {
       const { res, data } = await rawFetch('POST', '/api/login', { user: user.value, password: pw.value, code: code.value });
       if (!res.ok) throw new Error((data && data.error) || 'Sign-in failed');
+      ok = true;
+      S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; document.documentElement.dataset.role = S.role;
+      const me = rawFetch('GET', '/api/me').then(x => x.data).catch(() => null);
+      const m = await me; if (m) { S.fullName = m.fullName || ''; S.email = m.email || ''; S.title = m.title || ''; }
+      await welcome(S.fullName ? S.fullName.split(' ')[0] : S.user);
       if (fx) fx.stop();
-      S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; document.documentElement.dataset.role = S.role; boot2();
+      boot2();
     } catch (ex) { fail(ex.message); }
-    finally { btn.disabled = false; btn.classList.remove('busy'); }
+    finally { if (!ok) { btn.disabled = false; btn.classList.remove('busy'); btnText.textContent = 'Sign in'; } }
   } },
     h('label', { class: 'field' }, h('span', null, 'User'), user),
     h('label', { class: 'field' }, h('span', null, 'Password'), h('span', { class: 'pwwrap' }, pw, eye), caps),
@@ -639,7 +655,13 @@ async function logout() {
 const routes = [];
 function route(re, fn) { routes.push([re, fn]); }
 
+function navBar() {
+  let b = $('#navbar'); if (!b) { b = h('div', { id: 'navbar', 'aria-hidden': 'true' }, h('i')); document.body.append(b); }
+  b.classList.remove('run'); void b.offsetWidth; b.classList.add('run');
+}
+
 function navigate() {
+  navBar();
   cleanups.forEach(f => { try { f(); } catch (e) { /* ignore */ } }); cleanups = [];
   routeToken++;
   const path = location.hash.replace(/^#/, '') || '/';
@@ -653,7 +675,7 @@ function navigate() {
 async function boot() {
   const { res, data } = await rawFetch('GET', '/api/me');
   if (!res.ok) { showLogin(); return; }
-  S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; document.documentElement.dataset.role = S.role; boot2();
+  S.csrf = data.csrf; S.user = data.user; S.role = data.role || 'admin'; S.fullName = data.fullName || ''; S.email = data.email || ''; S.title = data.title || ''; document.documentElement.dataset.role = S.role; boot2();
 }
 function boot2() {
   navigate();
@@ -665,7 +687,7 @@ setInterval(() => { if (S.csrf) refreshAlertCount(); }, 30000);
 
 // ---------- devices ----------
 function deviceChip(d) {
-  if (!d.approved) return h('span', { class: 'chip warn' }, 'Pending approval');
+  if (!d.approved) return h('span', { class: 'chip warn' }, 'Needs setup');
   return d.online ? h('span', { class: 'chip on' }, 'Online') : h('span', { class: 'chip off' }, 'Offline · ' + fmtAgo(d.lastSeen));
 }
 const OS_LABEL = { windows: 'Win', linux: 'Linux', darwin: 'macOS' };
@@ -783,7 +805,7 @@ function viewDevices() {
     const hello = d.hello || {}, open = expanded.has(d.id), st = d.stats;
     const who = (st && st.user) || hello.user || '';
     const item = h('div', { class: 'pcitem' + (open ? ' open' : '') });
-    const toggleOpen = () => { open ? expanded.delete(d.id) : expanded.add(d.id); draw(true); };
+    const toggleOpen = () => { location.hash = '#/d/' + d.id; };
     const live = liveBits(d);
     item.append(h('div', { class: 'pcrow' },
       h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': 'Select ' + d.name, onchange: e => onSel(d.id, e.target.checked) })),
@@ -815,16 +837,16 @@ function viewDevices() {
     if (!force && sig === last) { devices.forEach(d => { const set = refs.get(d.id); if (set) set(d); }); return; } // only numbers moved: patch them in place
     last = sig; refs.clear();
     const pend = devices.filter(d => !d.approved);
-    clear(pendingBox).append(pend.length ? h('div', { class: 'notice warn', style: { marginBottom: '16px' } }, h('b', null, plural(pend.length, 'PC') + ' waiting for approval'),
+    clear(pendingBox).append(pend.length ? h('div', { class: 'notice warn', style: { marginBottom: '16px' } }, h('b', null, plural(pend.length, 'PC') + ' connected and waiting for setup'),
       h('div', { class: 'stack', style: { marginTop: '10px', gap: '8px' } }, pend.map(d => h('div', { class: 'row spread' },
-        h('div', null, h('b', null, d.name), h('span', { class: 'muted' }, ` · enrolled via "${d.via || '?'}" from ${d.lastIp}`)),
+        h('div', null, h('b', null, d.name), h('span', { class: 'muted' }, ` · from ${d.lastIp}`)),
         h('div', { class: 'row tight' },
-          actionButton('Approve', async () => { await api('POST', `/api/devices/${d.id}/approve`, {}); toast('Approved ' + d.name, 'ok'); refresh(); }, 'primary small'),
-          actionButton('Reject', async () => { if (await confirmDialog('Reject and remove ' + d.name + '?', 'Remove', true)) { await api('DELETE', '/api/devices/' + d.id); refresh(); } }, 'danger small')))))) : null);
+          h('a', { class: 'btn primary small', href: '#/d/' + d.id }, 'Set up'),
+          actionButton('Not mine', async () => { if (await confirmDialog('Remove ' + d.name + '?', 'Remove', true)) { await api('DELETE', '/api/devices/' + d.id); refresh(); } }, 'danger small')))))) : null);
     drawFilters();
     const r = visible();
     clear(content);
-    if (!approved().length) { content.append(h('div', { class: 'panel' }, emptyState('🖥️', 'No PCs yet', 'Create an enrollment token and install command to add your first PC.', h('a', { class: 'btn primary', href: '#/enroll' }, 'Add a PC')))); return; }
+    if (!approved().length) { content.append(h('div', { class: 'panel' }, emptyState('🖥️', 'No PCs yet', 'Download the agent for Windows, Linux or macOS and run it on the machine.', h('a', { class: 'btn primary', href: '#/enroll' }, 'Download agent')))); return; }
     if (!r.length) { content.append(h('div', { class: 'panel' }, emptyState('🔎', 'No PCs match', 'Try a different search or clear the filters.'))); return; }
     const allOn = r.every(d => selected.has(d.id));
     const groupHead = name => h('div', { class: 'pcgroup' }, h('b', null, name || 'No group'), h('span', { class: 'muted' }, plural(r.filter(d => (d.group || '') === (name || '')).length, 'PC')));
@@ -888,15 +910,13 @@ async function groupDialog(devs) {
 route(/^\/enroll$/, viewEnroll);
 function viewEnroll() {
   const out = h('div'); const list = h('div');
-  const label = h('input', { type: 'text', placeholder: "e.g. Dad's laptop", maxLength: 80 });
-  const hours = h('select', null, [[1, '1 hour'], [24, '24 hours'], [72, '3 days'], [168, '7 days'], [720, '30 days']].map(([v, l]) => h('option', { value: v, selected: v === 24 }, l)));
-  const uses = h('select', null, [[1, '1 PC (single use)'], [5, '5 PCs'], [25, '25 PCs'], [0, 'Unlimited']].map(([v, l]) => h('option', { value: v }, l)));
   const consent = h('select', null, [['prompt_if_present', 'Ask the person at the PC if someone is using it (recommended)'], ['always_prompt', 'Always ask before a remote screen session'], ['unattended', 'Never ask (unattended access)']].map(([v, l]) => h('option', { value: v }, l)));
   // Deploy profile: what the installer should set up on the PC before anyone installs it.
   const pGroup = h('input', { type: 'text', placeholder: 'e.g. Reception', maxLength: 40 }), pTags = h('input', { type: 'text', placeholder: 'comma separated, e.g. office, laptop' });
   const pPrefix = h('input', { type: 'text', placeholder: 'e.g. HQ-', maxLength: 20 }), pOrg = h('input', { type: 'text', placeholder: 'Shown in the tray menu and chat', maxLength: 60, oninput: () => paintPreview() });
   const pSupport = h('input', { type: 'text', placeholder: 'e.g. IT desk: it@example.com, ext 4400', maxLength: 200 });
-  const pApprove = h('select', null, [['manual', 'I approve each PC in the portal (recommended)'], ['auto', 'Approve automatically when it enrolls']].map(([v, l]) => h('option', { value: v }, l)));
+  const preset = modulePicker(['rmm']), presetBox = h('div', { class: 'hidden' }, h('p', { class: 'muted small-text' }, 'PCs installed from this file skip the onboarding screen and get this plan.'), preset.node);
+  const pApprove = h('select', { onchange: () => presetBox.classList.toggle('hidden', pApprove.value !== 'auto') }, [['manual', 'I pick the plan for each PC when it connects (recommended)'], ['auto', 'Skip onboarding: give every PC this plan']].map(([v, l]) => h('option', { value: v }, l)));
   const pTray = h('input', { type: 'checkbox', checked: true }), pBtn = h('input', { type: 'checkbox', checked: true });
   // Branding: a PNG logo and a colour. They show in the chat window on the PC.
   let logoData = '';
@@ -918,11 +938,11 @@ function viewEnroll() {
   pLogoClear.addEventListener('click', () => { logoData = ''; pLogoFile.value = ''; paintPreview(); });
   pAccent.addEventListener('input', () => { pAccentOn.checked = true; paintPreview(); }); pAccentOn.addEventListener('change', paintPreview);
   const profile = () => ({ accent: pAccentOn.checked ? pAccent.value : '', logo: logoData, group: pGroup.value.trim(), tags: pTags.value.split(',').map(x => x.trim()).filter(Boolean), namePrefix: pPrefix.value.trim(), autoApprove: pApprove.value === 'auto',
-    org: pOrg.value.trim(), supportText: pSupport.value.trim(), hideTray: !pTray.checked, noSupportBtn: !pBtn.checked });
+    org: pOrg.value.trim(), supportText: pSupport.value.trim(), hideTray: !pTray.checked, noSupportBtn: !pBtn.checked, modules: pApprove.value === 'auto' ? preset.get() : [] });
   const custom = h('details', { class: 'notice' }, h('summary', null, h('b', null, 'Customize the installer'), h('span', { class: 'muted' }, '  logo, colour, name, group, tags and approval')),
     h('div', { class: 'stack', style: { marginTop: '12px' } },
       h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Put the PC in group'), pGroup), h('label', { class: 'field' }, h('span', null, 'Tags'), pTags), h('label', { class: 'field' }, h('span', null, 'Name prefix'), pPrefix)),
-      h('label', { class: 'field' }, h('span', null, 'Approval'), pApprove),
+      h('label', { class: 'field' }, h('span', null, 'Onboarding'), pApprove), presetBox,
       h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Organisation name'), pOrg), h('label', { class: 'field' }, h('span', null, 'Support contact'), pSupport)),
       h('div', { class: 'brandrow' }, h('div', { class: 'stack' },
         h('label', { class: 'field' }, h('span', null, 'Logo (PNG, up to 64 KB)'), h('span', { class: 'row' }, pLogoFile, pLogoClear)),
@@ -944,8 +964,10 @@ function viewEnroll() {
   const dlRow = (title, text, btn) => h('div', { class: 'notice', style: { marginBottom: '14px' } }, h('div', { class: 'row spread' }, h('div', { style: { maxWidth: '60ch' } }, h('b', null, title), h('div', { class: 'muted small-text' }, text)), btn));
   let osTab = store.get('enrollos', 'windows');
 
-  const create = actionButton('Create install command', async () => {
-    const r = await api('POST', '/api/tokens', { label: label.value.trim(), hours: Number(hours.value), maxUses: Number(uses.value), profile: profile() });
+  const generate = async os => {
+    osTab = os; store.set('enrollos', os);
+    const known = new Set((await getDevices(true)).map(d => d.id));
+    const r = await api('POST', '/api/tokens', { label: 'One-PC installer ' + new Date().toLocaleString(), profile: profile() });
     const base = info.baseUrl, has = n => (info.dist || []).includes(n);
     const props = `SERVER=${base} TOKEN=${r.token}` + (consent.value !== 'prompt_if_present' ? ` CONSENT=${consent.value}` : '');
     const flags = `--server ${base} --token ${r.token}` + (consent.value !== 'prompt_if_present' ? ` --consent ${consent.value}` : '');
@@ -976,33 +998,54 @@ function viewEnroll() {
     const paneBox = h('div');
     const drawPane = () => clear(paneBox).append(panes[osTab]());
     clear(out).append(h('div', { class: 'panel', style: { marginTop: '16px' } },
-      h('div', { class: 'phead' }, h('h3', null, 'Install on the device'), h('span', { class: 'chip warn plain' }, 'Token shown once')),
+      h('div', { class: 'phead' }, h('h3', null, 'Install on the device'), h('span', { class: 'chip warn plain' }, 'One PC · 30 minutes')),
       h('div', { class: 'ostabs' }, segmented([['windows', 'Windows'], ['linux', 'Linux'], ['macos', 'macOS']], osTab, v => { osTab = v; store.set('enrollos', v); drawPane(); })),
       paneBox,
-      h('p', { class: 'muted', style: { marginTop: '14px' } }, 'The device appears under Devices as “Pending approval” until you approve it. Token: ', h('code', null, r.token), ' · valid until ', fmtTime(r.info.expiresAt))));
+      waitBox));
     drawPane();
-    loadTokens();
-  });
+    watchFor(known, new Date(r.info.expiresAt));
+    // the installer for the chosen system downloads straight away
+    const file = { windows: 'Helm-Agent.msi', linux: 'install-linux.sh', macos: 'install-macos.sh' }[os];
+    if (os !== 'windows' || info.installer) { try { await fetchInstaller(os, r.token, file); } catch (e) { toast(e.message, 'bad'); } }
+  };
+  const osCard = (os, name, text, art) => h('div', { class: 'oscard' }, h('div', { class: 'osart', 'aria-hidden': 'true' }, art), h('b', null, name), h('span', { class: 'muted small-text' }, text),
+    actionButton('Download for ' + name, () => generate(os), 'primary'));
 
-  const loadTokens = async () => {
-    const toks = await api('GET', '/api/tokens');
-    clear(list).append(table(['Label', 'Created', 'Expires', 'Used', ''].map(x => ({ label: x })), toks.map(t => {
-      const dead = t.revoked || new Date(t.expiresAt) < new Date() || (t.maxUses > 0 && t.uses >= t.maxUses);
-      return h('tr', null, h('td', null, t.label || '(no label)'), h('td', null, fmtTime(t.createdAt)), h('td', null, fmtTime(t.expiresAt)),
-        h('td', null, t.uses + (t.maxUses ? ' / ' + t.maxUses : ''), dead ? h('span', { class: 'muted' }, t.revoked ? ' (revoked)' : ' (expired/used up)') : null),
-        h('td', null, dead ? null : actionButton('Revoke', async () => { await api('DELETE', '/api/tokens/' + t.id); loadTokens(); }, 'danger small')));
-    }), { empty: 'No tokens yet' }));
+  // After the installer is made, wait for the PC to appear, then open its onboarding.
+  const waitBox = h('div', { class: 'waitbox', role: 'status' });
+  let stopWatch = null;
+  const watchFor = (known, until) => {
+    if (stopWatch) stopWatch();
+    const left = h('b', null), dot = h('span', { class: 'pulse', 'aria-hidden': 'true' });
+    clear(waitBox).append(dot, h('div', null, h('b', null, 'Waiting for the PC to connect'), h('div', { class: 'muted small-text' }, 'Run the installer on one PC. This one-time link works once and expires in ', left, ' or as soon as it is used.')));
+    let alive = true;
+    const tick = async () => {
+      if (!alive) return;
+      const secs = Math.max(0, Math.round((until - Date.now()) / 1000));
+      left.textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+      if (secs === 0) { alive = false; clear(waitBox).append(h('div', { class: 'notice warn' }, 'The link expired. Create a new installer to try again.')); return; }
+      if (secs % 3 === 0) {
+        try {
+          const now = await getDevices(true), fresh = now.find(d => !known.has(d.id));
+          if (fresh) { alive = false; toast(fresh.name + ' connected', 'ok'); location.hash = '#/d/' + fresh.id; return; }
+        } catch (e) { /* retry */ }
+      }
+      setTimeout(tick, 1000);
+    };
+    tick();
+    stopWatch = () => { alive = false; };
+    onLeave(stopWatch);
   };
 
-  shell('enroll', [pageHead('Add a device', 'Enroll a Windows PC, Mac or Linux machine with a one-time token'),
-    h('div', { class: 'panel stack' },
-      h('p', { style: { margin: 0 } }, 'Each PC enrolls with a token. Tokens expire and can be single-use. The token is removed from the PC after it has enrolled.'),
-      h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Label'), label), h('label', { class: 'field' }, h('span', null, 'Valid for'), hours), h('label', { class: 'field' }, h('span', null, 'Can enroll'), uses)),
-      h('label', { class: 'field' }, h('span', null, 'Remote screen consent on that PC'), consent), custom,
-      h('div', null, create)),
-    out, h('div', { class: 'panel flush', style: { marginTop: '16px' } }, h('div', { class: 'phead' }, h('h3', null, 'Tokens')), list)]);
+  shell('enroll', [pageHead('Download the agent', 'Pick the system. Each download is made for one PC and stops working after 30 minutes.'),
+    h('div', { class: 'osgrid' },
+      osCard('windows', 'Windows', 'Windows 10 and 11, 64-bit. A double-click installer (.msi).', '🪟'),
+      osCard('linux', 'Linux', 'Debian, Ubuntu, Raspberry Pi OS. A script you run with sudo.', '🐧'),
+      osCard('macos', 'macOS', 'macOS 12 or newer, Intel or Apple silicon. A script or package.', '🍎')),
+    out,
+    h('p', { class: 'muted', style: { marginTop: '14px' } }, 'After installing, the PC appears here and you choose what it gets: RMM, Antivirus, EDR, or any mix.'),
+    h('div', { class: 'panel stack', style: { marginTop: '14px' } }, h('h3', { style: { margin: 0 } }, 'Installer options'), h('label', { class: 'field' }, h('span', null, 'Remote screen consent on that PC'), consent), custom)]);
   api('GET', '/api/info').then(i => { info = i; }).catch(() => { });
-  loadTokens().catch(() => { });
 }
 
 // ---------- activity ----------

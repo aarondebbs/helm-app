@@ -1,6 +1,16 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.0', date: '2026-11-25', title: 'Helm 1.0 (prerelease): one agent, three modules', new: [
+    'Plans: every PC can run RMM, Antivirus, EDR, or any mix. The agent only connects the PC; you choose what it gets, and can change it any time under Plan & modules.',
+    'Onboarding: a PC that connects waits for you to pick its plan, name, group and tags. Installers are made for one PC and stop working after 30 minutes or the first use.',
+    'Antivirus: scans, threat history and an Antivirus page showing the engine version of every PC. Helm tells every PC to fetch fresh definitions at least every 24 hours and flags any that fall behind.',
+    'EDR: process, network and start-up telemetry with flags for suspicious programs, and one-click network isolation that releases itself.',
+    'PC details open in a side pane with a section menu instead of tabs across the top.',
+    'Sign-in shows progress and a short welcome. Google sign-in has a guided setup that reads Google\'s downloaded client file.',
+    'Profiles: full name, email and job title for every console user.'],
+    better: ['The side menu follows your accent colour.', 'Adding a PC is now Download agent: pick Windows, Linux or macOS and the installer downloads at once. PCs join only by installing it.'],
+    fixed: ['Linux and macOS PCs: the file browser now uses / paths and opens the root folder correctly.'] },
   { v: '0.15.0', title: 'Make the console yours', new: [
     'Settings, Appearance: choose light, dark or follow the system, pick an accent colour from six tested palettes, and switch between comfortable and compact density.',
     'Settings, Branding: your own name and logo on the sign-in page and at the top of the menu.'],

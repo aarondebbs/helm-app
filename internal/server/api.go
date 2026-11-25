@@ -79,7 +79,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, sess *session)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"user": adm.User, "role": roleName(adm.Role), "csrf": sess.CSRF, "totp": adm.TOTPSecret != "", "stepUp": s.sess.stepUpValid(sess),
-		"stepUpUntil": sess.StepUpUntil})
+		"stepUpUntil": sess.StepUpUntil, "fullName": adm.FullName, "email": adm.Email, "title": adm.Title})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -243,6 +243,8 @@ type deviceView struct {
 	Tags      []string     `json:"tags"`
 	Security  *secSummary  `json:"security,omitempty"`
 	Approved  bool         `json:"approved"`
+	Modules   []string     `json:"modules"`
+	Onboarded bool         `json:"onboarded"`
 	Online    bool         `json:"online"`
 	LastSeen  time.Time    `json:"lastSeen"`
 	LastIP    string       `json:"lastIp"`
@@ -258,6 +260,14 @@ func (s *Server) view(d Device, online map[string]*Agent) deviceView {
 		LastIP: d.LastIP, Via: d.Via, CreatedAt: d.CreatedAt, Hello: d.Hello}
 	if v.Tags == nil {
 		v.Tags = []string{}
+	}
+	v.Onboarded = d.Onboarded || len(d.Modules) > 0 || d.Approved // approved before 1.0 counts as onboarded
+	v.Modules = d.Modules
+	if !d.Onboarded && len(d.Modules) == 0 && d.Approved {
+		v.Modules = []string{"rmm"}
+	}
+	if v.Modules == nil {
+		v.Modules = []string{}
 	}
 	if a := online[d.ID]; a != nil {
 		v.Online = true
@@ -302,11 +312,104 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, sess *ses
 		return
 	}
 	if a := s.hub.online(id); a != nil {
+		a.setModules([]string{"rmm"})
 		a.approved.Store(true)
 		_ = a.send(proto.Frame{T: proto.TApproved})
 	}
 	s.record(r, "device_approved", id, "")
 	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// handleOnboard finishes setting up a PC that has just connected: the person picks which modules it gets
+// (RMM, Antivirus, EDR, any mix) and, if they like, a name, group and tags. Choosing a plan approves the PC.
+func (s *Server) handleOnboard(w http.ResponseWriter, r *http.Request, sess *session) {
+	id := r.PathValue("id")
+	var req struct {
+		Modules []string `json:"modules"`
+		Name    string   `json:"name"`
+		Group   string   `json:"group"`
+		Tags    []string `json:"tags"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	mods := cleanModules(req.Modules)
+	if len(mods) == 0 {
+		writeErr(w, 400, "pick at least one module")
+		return
+	}
+	if len(req.Name) > 100 || len(req.Group) > 40 || len(req.Tags) > 20 {
+		writeErr(w, 400, "name, group or tags too long")
+		return
+	}
+	err := s.st.update(func(d *data) error {
+		dev := d.Devices[id]
+		if dev == nil {
+			return errors.New("no such device")
+		}
+		dev.Modules, dev.Onboarded, dev.Approved = mods, true, true
+		if n := strings.TrimSpace(req.Name); n != "" {
+			dev.Name = n
+		}
+		if g := strings.TrimSpace(req.Group); g != "" {
+			dev.Group = g
+		}
+		if len(req.Tags) > 0 {
+			dev.Tags = nil
+			for _, t := range req.Tags {
+				if t = strings.TrimSpace(t); t != "" && len(t) <= 30 {
+					dev.Tags = append(dev.Tags, t)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+	if a := s.hub.online(id); a != nil {
+		a.setModules(mods)
+		a.approved.Store(true)
+		_ = a.send(proto.Frame{T: proto.TApproved})
+		s.kickAV(id, mods)
+	}
+	s.record(r, "device_onboarded", id, strings.Join(mods, "+"))
+	writeJSON(w, 200, map[string]any{"ok": true, "modules": mods})
+}
+
+// handleModules changes the plan of a PC that is already onboarded.
+func (s *Server) handleModules(w http.ResponseWriter, r *http.Request, sess *session) {
+	id := r.PathValue("id")
+	var req struct {
+		Modules []string `json:"modules"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	mods := cleanModules(req.Modules)
+	if len(mods) == 0 {
+		writeErr(w, 400, "pick at least one module")
+		return
+	}
+	err := s.st.update(func(d *data) error {
+		dev := d.Devices[id]
+		if dev == nil {
+			return errors.New("no such device")
+		}
+		dev.Modules, dev.Onboarded = mods, true
+		return nil
+	})
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+	if a := s.hub.online(id); a != nil {
+		a.setModules(mods)
+		s.kickAV(id, mods)
+	}
+	s.record(r, "device_modules", id, strings.Join(mods, "+"))
+	writeJSON(w, 200, map[string]any{"ok": true, "modules": mods})
 }
 
 func (s *Server) handleEdit(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -520,18 +623,11 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, sess 
 		writeErr(w, 400, perr.Error())
 		return
 	}
-	if req.Hours <= 0 || req.Hours > 24*90 {
-		req.Hours = 24
-	}
-	if req.MaxUses < 0 || req.MaxUses > 1000 {
-		writeErr(w, 400, "maxUses out of range")
-		return
-	}
 	if len(req.Label) > 80 {
 		writeErr(w, 400, "label too long")
 		return
 	}
-	plain, t, err := s.st.CreateTokenP(req.Label, time.Duration(req.Hours)*time.Hour, req.MaxUses, pf)
+	plain, t, err := s.st.CreateTokenP(req.Label, tokenTTL, 1, pf)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -631,6 +727,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	a := &Agent{ID: dev.ID, conn: c, Since: time.Now(), IP: ip}
 	a.approved.Store(dev.Approved)
+	a.setModules(dev.effectiveModules())
 	s.hub.attach(a)
 	s.st.touch(func(d *data) {
 		if x := d.Devices[dev.ID]; x != nil {

@@ -152,6 +152,7 @@ func (a *Agent) httpClient() *http.Client {
 // Run connects to the server and serves commands until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) {
 	a.log.Printf("helm agent %s starting (server %s)", a.cfg.Version, a.cfg.Server)
+	a.resumeIsolation()
 	go a.statusLoop(ctx)
 	go a.serveControl(ctx)
 	go a.trayKeeper(ctx)

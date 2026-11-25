@@ -394,9 +394,14 @@ function tabFiles(body, dev, id) {
   if (!needOnline(dev, body)) return;
   let cwd = '';
   const crumbs = h('div', { class: 'row' }), list = h('div');
-  const join = (a, b) => a ? (a.endsWith('\\') ? a + b : a + '\\' + b) : b;
-  const parent = p => { const t = p.replace(/\\+$/, ''); const i = t.lastIndexOf('\\'); return i < 0 ? '' : (i <= 2 && /^[A-Za-z]:$/.test(t.slice(0, i)) ? t.slice(0, i) + '\\' : t.slice(0, i)); };
-  const pathInput = h('input', { type: 'text', style: { flex: 1, minWidth: '14em', fontFamily: 'var(--mono)' }, placeholder: 'C:\\' });
+  const unix = isLinux(dev), SEP = unix ? '/' : '\\';
+  const join = (a, b) => a ? (a.endsWith(SEP) ? a + b : a + SEP + b) : b;
+  const parent = p => {
+    if (unix) { const t = p.replace(/\/+$/, ''); const i = t.lastIndexOf('/'); return i <= 0 ? '/' : t.slice(0, i); }
+    const t = p.replace(/\\+$/, ''); const i = t.lastIndexOf('\\');
+    return i < 0 ? '' : (i <= 2 && /^[A-Za-z]:$/.test(t.slice(0, i)) ? t.slice(0, i) + '\\' : t.slice(0, i));
+  };
+  const pathInput = h('input', { type: 'text', style: { flex: 1, minWidth: '14em', fontFamily: 'var(--mono)' }, placeholder: unix ? '/' : 'C:\\' });
   const go = async p => {
     clear(list).append(h('span', { class: 'spinner' }));
     try {
@@ -405,7 +410,7 @@ function tabFiles(body, dev, id) {
       const ents = r.entries || [];
       clear(list).append(r.truncated ? h('div', { class: 'notice warn' }, 'Only the first 5000 entries are shown.') : null,
         table([{ label: 'Name' }, { label: 'Size', num: true }, { label: 'Modified' }, { label: '' }],
-          [cwd ? h('tr', null, h('td', { colSpan: 4 }, h('a', { href: '#', onclick: e => { e.preventDefault(); go(parent(cwd)); } }, '⬑ ..'))) : null].concat(ents.map(en => {
+          [cwd && !(unix && cwd === '/') ? h('tr', null, h('td', { colSpan: 4 }, h('a', { href: '#', onclick: e => { e.preventDefault(); go(parent(cwd)); } }, '⬑ ..'))) : null].concat(ents.map(en => {
             const full = join(cwd, en.name);
             return h('tr', null,
               h('td', null, en.dir ? h('a', { href: '#', onclick: e => { e.preventDefault(); go(full); } }, '📁 ' + en.name) : '📄 ' + en.name),
@@ -531,7 +536,7 @@ function tabScreen(body, dev, id) {
     if (!live || vo.checked) { toast('Connect and turn off view-only to send files', 'bad'); return; }
     const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (!f) return;
     if (f.size > 512 * 1048576) { toast('That file is larger than 512 MB', 'bad'); return; }
-    const dir = h('input', { type: 'text', value: sessionStorage.getItem('helm.dropdir') || 'C:\\Users\\Public\\Desktop', style: { width: '100%' } });
+    const dir = h('input', { type: 'text', value: sessionStorage.getItem('helm.dropdir') || (isLinux(dev) ? '/tmp' : 'C:\\Users\\Public\\Desktop'), style: { width: '100%' } });
     const ok = await modal('Send file to ' + dev.name, h('div', { class: 'stack' }, h('p', null, f.name + ' (' + Math.ceil(f.size / 1024).toLocaleString() + ' KB)'), h('label', { class: 'field' }, h('span', null, 'Save in this folder on the PC'), dir)), [{ label: 'Cancel', value: false }, { label: 'Send file', value: true }]);
     if (!ok) return;
     try {

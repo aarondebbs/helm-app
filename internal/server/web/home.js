@@ -38,7 +38,7 @@ async function viewDashboard() {
     clear(lead).append(
       d.total === 0 ? h('h1', null, 'Add your first PC.') : work.length ? h('h1', null, h('span', { class: 'sdot ' + (urgent ? 'bad' : 'warn') }), work.length === 1 ? 'One thing needs you.' : work.length + ' things need you.') : h('h1', null, h('span', { class: 'sdot ok' }), 'Nothing needs you.'),
       h('p', { class: 'leadsub' }, d.total ? [plural(d.total, 'PC'), d.online + ' online', d.scored ? 'average security score ' + d.avgScore : 'not scanned yet'].join(' · ') + (urgent ? '. ' + urgent + ' urgent.' : '.') : 'Create an enrollment token, install the agent on a PC, and this page shows how the fleet is doing.'),
-      h('div', { class: 'row', style: { marginTop: '14px' } }, d.total ? actionButton('Scan all PCs', async () => { const r = await api('POST', '/api/run/scan', { target: { all: true } }); toast('Scanning ' + plural(r.results.length, 'PC'), 'ok'); }) : h('a', { class: 'btn primary', href: '#/enroll' }, icon('plus'), 'Add a PC'),
+      h('div', { class: 'row', style: { marginTop: '14px' } }, d.total ? actionButton('Scan all PCs', async () => { const r = await api('POST', '/api/run/scan', { target: { all: true } }); toast('Scanning ' + plural(r.results.length, 'PC'), 'ok'); }) : h('a', { class: 'btn primary', href: '#/enroll' }, icon('download'), 'Download agent'),
         d.scored ? h('a', { class: 'btn', href: '#/security' }, 'Review findings') : null));
     const runs = d.runs || [];
     const groups = Object.entries(d.groups).sort((a, b) => b[1] - a[1]), oses = Object.entries(d.os).sort((a, b) => b[1] - a[1]);

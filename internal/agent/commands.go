@@ -50,6 +50,9 @@ func (a *Agent) handlers() map[string]handlerFn {
 	for k, v := range a.deployHandlers() {
 		m[k] = v
 	}
+	for k, v := range a.secHandlers() {
+		m[k] = v
+	}
 	if realLinux() {
 		a.linuxHandlers(m)
 	}

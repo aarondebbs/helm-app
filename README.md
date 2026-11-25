@@ -363,3 +363,13 @@ Run Helm behind Tailscale ACLs or an allow-list where you can, and keep admin ac
 
 - **Appearance** (Settings, Appearance): mode (system, light, dark), accent colour (six palettes checked for contrast in both modes) and density. These are saved in the browser, so each person sees their own.
 - **Branding** (Settings, Appearance): a name and a PNG logo (up to 64 KB) shown on the sign-in page and in the menu for everyone. Viewers cannot change it.
+
+
+## 1.0.0 (prerelease): modules and onboarding
+
+- **One agent, three modules.** The agent only connects a PC to the console. You choose per PC what it gets: **RMM** (remote screen, files, terminal, software, updates, services, chat), **Antivirus**, **EDR**, or any mix. The server enforces the plan, so a PC with only Antivirus cannot be sent an RMM command. Change a plan any time under *Plan & modules*.
+- **Onboarding.** PCs join only by installing the agent. Each installer is made for one PC, works once and expires after 30 minutes. When the PC connects, the console opens its onboarding: plan, name, group and tags. An installer can preset a plan to skip the screen.
+- **Antivirus.** Helm drives the engine the OS already has (Microsoft Defender, ClamAV, XProtect) and keeps it current: every PC with the module is told to update at least every 24 hours, the engine version is read back, and anything older than 48 hours shows as out of date on the *Antivirus* page. Helm does not ship its own signature database.
+- **EDR.** Process, network and start-up telemetry with flags (programs running from temp or download folders, deleted executables, look-alike system names, encoded PowerShell, reverse-shell patterns) and network isolation. Isolation only leaves the Helm server reachable and always has an expiry, so it releases itself.
+- **Console.** PC details open in a side pane; the menu follows the accent colour; sign-in shows progress; Google sign-in has a guided setup; users have a full name, email and job title.
+- **Fixed.** Linux and macOS file browser used Windows paths.

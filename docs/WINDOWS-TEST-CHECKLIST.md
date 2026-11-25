@@ -131,3 +131,11 @@ were compiled and statically checked, but never run on Windows during developmen
 
 - [ ] The PC list shows the right picture for a laptop and for a desktop (a battery means laptop).
 - [ ] A token with a logo and colour: the chat window page on the PC shows the logo and colour.
+
+
+## 1.0.0
+
+- Connect a PC: create the installer, run it, the console opens the onboarding by itself within a few seconds. A second PC with the same installer is refused.
+- Choose RMM + Antivirus: Antivirus page shows Microsoft Defender with a version and "Up to date". Press Quick scan.
+- Choose EDR: open Detection & response, check the flagged list is sensible, isolate for 30 minutes, confirm the PC still shows online in the console but cannot browse the web, then Release.
+- Remove RMM from the plan: Remote screen, Files and Terminal vanish from the pane and the console refuses those commands.

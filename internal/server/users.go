@@ -1,7 +1,9 @@
 package server
 
 import (
+	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -15,17 +17,53 @@ func (s *Server) isOwner(sess *session) bool {
 }
 
 type userView struct {
-	User    string    `json:"user"`
-	Role    string    `json:"role"`
-	Owner   bool      `json:"owner"`
-	TOTP    bool      `json:"totp"`
-	Created time.Time `json:"created,omitempty"`
+	User     string    `json:"user"`
+	Role     string    `json:"role"`
+	Owner    bool      `json:"owner"`
+	TOTP     bool      `json:"totp"`
+	Created  time.Time `json:"created,omitempty"`
+	FullName string    `json:"fullName,omitempty"`
+	Email    string    `json:"email,omitempty"`
+	Title    string    `json:"title,omitempty"`
+}
+
+var reUserEmail = regexp.MustCompile(`^[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{2,}$`)
+
+// cleanProfileFields validates the display fields of a user.
+func cleanProfileFields(full, email, title string) (string, string, string, error) {
+	full, email, title = strings.TrimSpace(full), strings.TrimSpace(email), strings.TrimSpace(title)
+	bad := func(x string) bool { return strings.ContainsAny(x, "\x00\r\n\t") }
+	if len([]rune(full)) > 80 || len([]rune(title)) > 60 || bad(full) || bad(email) || bad(title) {
+		return "", "", "", errors.New("name up to 80 characters, job title up to 60")
+	}
+	if email != "" && (len(email) > 254 || !reUserEmail.MatchString(email)) {
+		return "", "", "", errors.New("that email address does not look right")
+	}
+	return full, strings.ToLower(email), title, nil
+}
+
+// handleProfileSet lets any signed-in user edit their own name, email and job title.
+func (s *Server) handleProfileSet(w http.ResponseWriter, r *http.Request, sess *session) {
+	var req struct{ FullName, Email, Title string }
+	if !readJSON(w, r, &req) {
+		return
+	}
+	f, e, t, err := cleanProfileFields(req.FullName, req.Email, req.Title)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.st.setProfile(sess.User, f, e, t); err != nil {
+		writeErr(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "fullName": f, "email": e, "title": t})
 }
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *session) {
 	out := []userView{}
 	for i, u := range s.st.listUsers() {
-		out = append(out, userView{User: u.User, Role: roleName(u.Role), Owner: i == 0, TOTP: u.TOTPSecret != "", Created: u.Created})
+		out = append(out, userView{User: u.User, Role: roleName(u.Role), Owner: i == 0, TOTP: u.TOTPSecret != "", Created: u.Created, FullName: u.FullName, Email: u.Email, Title: u.Title})
 	}
 	writeJSON(w, 200, map[string]any{"users": out, "canManage": s.isOwner(sess)})
 }
@@ -38,7 +76,7 @@ func (s *Server) handleUserAdd(w http.ResponseWriter, r *http.Request, sess *ses
 	if !s.needStepUp(w, sess) {
 		return
 	}
-	var req struct{ User, Password, Role string }
+	var req struct{ User, Password, Role, FullName, Email, Title string }
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -55,11 +93,17 @@ func (s *Server) handleUserAdd(w http.ResponseWriter, r *http.Request, sess *ses
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	fn, em, ti, perr := cleanProfileFields(req.FullName, req.Email, req.Title)
+	if perr != nil {
+		writeErr(w, http.StatusBadRequest, perr.Error())
+		return
+	}
 	secret, err := s.st.addUser(u, req.Password, req.Role)
 	if err != nil {
 		writeErr(w, http.StatusConflict, err.Error())
 		return
 	}
+	_ = s.st.setProfile(u, fn, em, ti)
 	s.record(r, "user_added", "", u+" ("+req.Role+")")
 	uri := OtpauthURI(u, secret)
 	writeJSON(w, 200, map[string]any{"user": u, "secret": secret, "uri": uri, "qr": qrSVGPath(uri)})
