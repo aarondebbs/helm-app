@@ -41,7 +41,7 @@ The script lists the releases with their dates and a line of the release log, yo
 4. asks you for an administrator password and prints the authenticator key to add to your app,
 5. starts the server on `http://127.0.0.1:8787`.
 
-Options: `-Version v0.13.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
+Options: `-Version v0.13.1` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
 (also opens the firewall) · `-Repo owner/name` (your own fork) · `-IncludePrerelease` · `-Uninstall` (`-PurgeData` deletes data too).
 Run it again any time to switch version; your data stays.
 
@@ -51,8 +51,8 @@ To publish it on the internet over HTTPS, install Tailscale on the server and ru
 
 ```bash
 sudo mkdir -p /opt/helm /var/lib/helm
-# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.13.0 and arm64/amd64 as needed)
-sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.13.0/helm-server-linux-arm64
+# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.13.1 and arm64/amd64 as needed)
+sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.13.1/helm-server-linux-arm64
 sudo chmod 0755 /opt/helm/helm-server && sudo ln -sf /opt/helm/helm-server /usr/local/bin/helm-server
 sudo curl -fL -o /etc/systemd/system/helm-server.service https://raw.githubusercontent.com/aarondebbs/helm-app/main/deploy/helm-server.service
 sudo useradd --system --home /var/lib/helm --shell /usr/sbin/nologin helm; sudo chown -R helm:helm /opt/helm /var/lib/helm
@@ -205,11 +205,16 @@ On the Remote screen tab you can drag a file onto the picture to send it to the 
 
 ## Chat with the person at a PC
 
-Open **Inbox** (or a PC's **Chat** tab) and write to a PC. On Windows the message opens a small chat window next to the
-taskbar (Helm Agent's tray menu also has *Chat with support*); the person's reply comes back to your Inbox, and you get a
-Telegram or e-mail alert if you have those on (rule *New chat message*). Messages are kept for 30 days. The window is a
-page served by the agent on the PC's own loopback address, opened with Microsoft Edge in app mode (or the default browser
-if Edge is missing). Chat follows the *Request support* setting of the install profile.
+Open **Inbox** (or a PC's **Chat** tab) and write to a PC. The person at the PC sees it at once and replies from the same
+window; the reply comes back to your Inbox, and you get a Telegram or e-mail alert if you have those on (rule *New chat
+message*). Messages are kept for 30 days. Chat follows the *Request support* setting of the install profile.
+
+- **Windows:** a small native window opens by itself (the tray menu also has *Chat with support*). It flashes in the
+  taskbar when a message arrives while it is in the background.
+- **Linux and macOS:** the agent finds the user signed in at the screen, shows a desktop notification and opens the chat
+  as a small app-style window in their session (Chrome, Chromium, Edge or Brave if installed, otherwise the default
+  browser). Run `helm-agent chat` to open it by hand. Notifications use `notify-send` on Linux and the system banner on
+  macOS. Nothing opens when nobody is signed in at a screen.
 
 ## A new console
 

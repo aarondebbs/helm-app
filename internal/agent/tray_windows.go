@@ -330,6 +330,9 @@ func trayWndProc(hwnd, m, wp, lp uintptr) uintptr {
 	case wmTimer:
 		tray.sync()
 		return 0
+	case wmChatShow:
+		showChatWindow()
+		return 0
 	case wmDestroy:
 		nid := tray.nid()
 		pNotify.Call(nimDelete, uintptr(unsafe.Pointer(&nid)))
@@ -379,6 +382,11 @@ func RunTray(args []string) int {
 		if int32(r) <= 0 {
 			break
 		}
+		if cw.wnd != 0 { // Tab and Enter inside the chat window
+			if handled, _, _ := pIsDialogMessage.Call(cw.wnd, uintptr(unsafe.Pointer(&m))); handled != 0 {
+				continue
+			}
+		}
 		pTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		pDispatchMessage.Call(uintptr(unsafe.Pointer(&m)))
 	}
@@ -404,9 +412,9 @@ func (t *trayApp) watchChat() {
 	}
 }
 
-// openChatWindow shows the chat page in a small window without browser controls (Edge's app mode), and falls back
+// openChatBrowser shows the chat page in a small window without browser controls (Edge's app mode), and falls back
 // to the default browser if Edge cannot be found.
-func openChatWindow(s TrayStatus) {
+func openChatBrowser(s TrayStatus) {
 	if s.Control == "" || s.ChatToken == "" {
 		messageBox("Helm Agent", "The agent is not ready yet. Try again in a moment.")
 		return

@@ -10,7 +10,7 @@ import (
 func chatTestAgent(t *testing.T) (*Agent, http.Handler, string) {
 	t.Helper()
 	t.Setenv("TMPDIR", t.TempDir())
-	a := &Agent{}
+	a := &Agent{chatQuiet: true}
 	a.tray.State, a.tray.ChatToken = "connected", "tok123"
 	a.tray.AllowSupport = true
 	mux := http.NewServeMux()

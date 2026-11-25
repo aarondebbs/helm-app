@@ -64,6 +64,9 @@ func (a *Agent) chatIncoming(id, text string) {
 	a.tray.ChatUnread++
 	a.stMu.Unlock()
 	a.writeStatus()
+	if !a.chatQuiet {
+		go a.chatNotifyUser(text)
+	}
 }
 
 // chatRoutes serves the chat window's page and API on the loopback listener. Every path contains a random token

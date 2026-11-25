@@ -29,6 +29,7 @@ Usage:
   helm-agent run [flags]    run in the foreground (testing)
         -server URL  -token TOKEN  -data DIR  -consent MODE  -insecure
   helm-agent configure --server URL --token TOKEN [--consent MODE]   (Linux: write /etc/helm-agent/agent.conf)
+  helm-agent chat                                                    (open the chat with support)
   helm-agent version
 `
 
@@ -44,6 +45,8 @@ func main() {
 		os.Exit(configureLinux(os.Args[2:]))
 	case "helper":
 		os.Exit(agent.RunHelper(os.Args[2:]))
+	case "chat":
+		os.Exit(agent.RunChat(os.Args[2:]))
 	case "tray":
 		os.Exit(agent.RunTray(os.Args[2:]))
 	case "service":

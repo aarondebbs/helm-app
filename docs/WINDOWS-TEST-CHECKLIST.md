@@ -119,3 +119,10 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] Tray menu shows *Chat with support*; clicking it opens a small Edge app window; Send reaches the Inbox.
 - [ ] A message from the console opens the window by itself within ~5 seconds and the menu shows "(1 new)" until it is read.
 - [ ] With Edge removed, the chat opens in the default browser.
+
+## 0.13.1 (native chat window)
+
+- [ ] A message from the console opens a native "Chat with support" window; text is readable, Enter sends, the window can be resized.
+- [ ] While the window is behind others, a new message flashes its taskbar button.
+- [ ] Closing and reopening it from the tray menu keeps the conversation.
+- [ ] On Linux (desktop) and macOS: a notification appears and an app-style window opens; `helm-agent chat` reopens it.
