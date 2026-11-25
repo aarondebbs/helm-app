@@ -312,3 +312,8 @@ html[data-density="compact"] .pccard-main { padding: 12px 12px 8px; }
 .feeddet { padding: 0 20px 10px 60px; }
 
 .chip.vendor { background: var(--panel2); color: var(--text2); border: 1px solid var(--line); }
+
+.about { display: flex; align-items: center; gap: 18px; padding: 6px 0 14px; border-bottom: 1px solid var(--line); }
+.aboutmark { flex: none; width: 64px; height: 64px; display: grid; place-items: center; }
+.aboutmark svg, .aboutmark img { width: 56px; height: 56px; } .aboutmark span { display: none; }
+.aboutname { font-size: 22px; font-weight: 700; letter-spacing: -.01em; } .aboutver { font-size: 15px; font-variant-numeric: tabular-nums; margin: 2px 0 4px; }

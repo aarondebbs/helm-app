@@ -1,6 +1,11 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.2', date: '2026-11-25', title: 'A proper About and Updates section', new: [
+    'Settings → Updates now opens with the Helm logo and the exact version this server runs, like winver.',
+  ], improved: [
+    'The GitHub repository field is gone. Every Helm updates from the same place, so it is no longer asked for.',
+  ] },
   { v: '1.0.1', date: '2026-11-25', title: 'Plans install what they need, clearer activity, separate tabs', new: [
     'Choosing a plan now installs the parts it needs on the PC: ClamAV on Linux, a firewall tool for isolation, a Defender check on Windows. Then it fetches the first definitions. Use Set up components to retry.',
     'Activity is now a readable feed: plain sentences, grouped by day, with filters and a search. Click an entry for the exact time, address and technical detail.',

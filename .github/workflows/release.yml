@@ -4,8 +4,6 @@ name: release
 on:
   push:
     tags: ["v*"]
-    branches: [main]
-    paths: [VERSION]   # bumping VERSION on main releases automatically, no tag push needed
   workflow_dispatch:
     inputs:
       tag:
@@ -14,16 +12,13 @@ on:
 permissions:
   contents: write
 env:
-  TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 jobs:
   macos-pkg:
     # The .pkg can only be built with Apple's pkgbuild, so a macOS runner does it.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Work out the release tag
-        run: |
-          [ -n "$TAG" ] || echo "TAG=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod, cache: false }
       - name: Build agent and package
@@ -46,9 +41,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Work out the release tag
-        run: |
-          [ -n "$TAG" ] || echo "TAG=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod, cache: false }
       - uses: actions/download-artifact@v4

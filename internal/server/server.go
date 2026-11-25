@@ -74,8 +74,13 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.DefaultRepo != "" && reRepo.MatchString(cfg.DefaultRepo) && db.settings().UpdateRepo == "" {
-		db.update(func(d *dbData) { d.Settings.UpdateRepo = cfg.DefaultRepo })
+	// Every Helm install updates from the same public repository, so it is never asked for.
+	repo := cfg.DefaultRepo
+	if repo == "" || !reRepo.MatchString(repo) {
+		repo = officialRepo
+	}
+	if db.settings().UpdateRepo == "" {
+		db.update(func(d *dbData) { d.Settings.UpdateRepo = repo })
 	}
 	s := &Server{
 		cfg:       cfg,
@@ -447,3 +452,6 @@ func (s *Server) needStepUp(w http.ResponseWriter, sess *session) bool {
 	writeErr(w, http.StatusPreconditionRequired, "stepup_required")
 	return false
 }
+
+// officialRepo publishes every Helm release.
+const officialRepo = "aarondebbs/helm-app"

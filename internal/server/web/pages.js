@@ -417,15 +417,13 @@ async function viewSettings() {
   const autoScan = toggle(s.autoScan), every_ = h('input', { type: 'number', min: 1, max: 720, value: s.scanEveryHours, style: { width: '7em' } });
   const nvd = h('input', { type: 'password', autocomplete: 'off', placeholder: s.nvdKeySet ? '•••••••• (saved)' : 'Optional NVD API key' });
   let clearTok = false, clearNvd = false;
-  const repo = h('input', { type: 'text', placeholder: 'aarondebbs/helm-app', value: s.updateRepo || '', autocomplete: 'off', spellcheck: 'false' });
   const manualAgents = toggle(!s.manualAgentUpdates);
   const updBox = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
   const drawUpd = async () => {
     let u; try { u = await api('GET', '/api/update'); } catch (e) { clear(updBox).append(h('div', { class: 'notice bad' }, e.message)); return; }
     const rel = Object.entries(u.agentReleases || {}).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none';
     clear(updBox).append(
-      h('div', { class: 'row spread' }, h('span', null, 'This server'), h('b', null, u.current)),
-      h('div', { class: 'row spread' }, h('span', null, 'Latest release'), h('b', null, u.latest || (u.repo ? 'not checked yet' : '—'))),
+      h('div', { class: 'row spread' }, h('span', null, 'Latest release'), h('b', null, u.latest || 'not checked yet')),
       h('div', { class: 'row spread' }, h('span', null, 'Agent updates ready to roll out'), h('b', null, rel)),
       !u.keyConfigured ? h('div', { class: 'notice warn' }, 'This server was built without a release key, so cloud updates are switched off. Install a build made with build.sh.') : null,
       u.error ? h('div', { class: 'notice bad' }, u.error) : null,
@@ -467,7 +465,7 @@ async function viewSettings() {
   };
   setTimeout(drawUpd, 0);
   const save = async (quiet) => {
-    const body = { updateRepo: repo.value, manualAgentUpdates: !manualAgents.querySelector('input').checked, telegram: { enabled: tgOn.querySelector('input').checked, chatId: chat.value, token: token.value, clearToken: clearTok },
+    const body = { manualAgentUpdates: !manualAgents.querySelector('input').checked, telegram: { enabled: tgOn.querySelector('input').checked, chatId: chat.value, token: token.value, clearToken: clearTok },
       email: { enabled: emOn.querySelector('input').checked, host: emHost.value, port: Number(emPort.value), security: emSec.value, user: emUser.value, pass: emPass.value, from: emFrom.value, to: emTo.value },
       offlineMinutes: Number(offline.value), diskFreePct: Number(disk.value), autoScan: autoScan.querySelector('input').checked, scanEveryHours: Number(every_.value), rules };
     if (nvd.value || clearNvd) body.nvdKey = clearNvd ? '' : nvd.value;
@@ -476,8 +474,7 @@ async function viewSettings() {
   clear(host).append(
     h('div', { class: 'grid two' },
       h('div', { class: 'stack' },
-        panel('Updates', 'Install new versions from your GitHub releases', null, h('div', { class: 'stack' },
-          h('label', { class: 'field' }, h('span', null, 'GitHub repository'), repo, h('span', { class: 'hint' }, 'Owner/name of the repository that publishes Helm releases (public, or any repository whose releases this server can read). Every file is signature-checked before it is installed.')),
+        panel('Updates', 'About this Helm and new versions', null, h('div', { class: 'stack' }, aboutBlock(),
           h('div', { class: 'row spread' }, h('span', null, 'Roll agent updates out to PCs automatically'), manualAgents),
           updBox)),
         backupPanel(),
@@ -716,4 +713,12 @@ async function viewNetwork() {
   clear(bar).append(h('label', null, 'Scan from ', src), h('label', null, 'Network ', cidr), go);
   if (!info.sources.length) clear(bar).append(h('span', { class: 'muted' }, 'No online PC or server network to scan from.'));
   if (info.last) drawHosts(info.last);
+}
+
+// Like winver: the logo, the product name and the exact version this server is running.
+function aboutBlock() {
+  const box = h('div', { class: 'about' }, h('div', { class: 'aboutmark brand' }, ...brandMark()),
+    h('div', { class: 'aboutinfo' }, h('div', { class: 'aboutname' }, 'Helm'), h('div', { class: 'aboutver' }, 'Version ' + (S.version || '…')), h('div', { class: 'muted' }, 'Remote management, antivirus and EDR from one console')));
+  api('GET', '/api/update').then(u => { box.querySelector('.aboutver').textContent = 'Version ' + u.current; }).catch(() => {});
+  return box;
 }
