@@ -255,6 +255,7 @@ function tabEdr(body, dev, id) {
 // ---------- Plan & modules tab ----------
 function tabPlan(body, dev, id) {
   const pick = modulePicker(dev.modules || ['rmm']);
+  if (dev.online) body.append(h('div', { class: 'panel stack' }, h('h3', { style: { margin: 0 } }, 'Set up this PC'), h('p', { class: 'muted', style: { margin: 0 } }, 'Installs what the plan needs (antivirus engine, firewall tool) and turns on Wake-on-LAN on the network card so Helm can wake this PC. Runs by itself when a plan is saved.'), setupButton(dev, id, dev.modules || ['rmm'])));
   body.append(h('div', { class: 'panel stack' }, h('h3', { style: { margin: 0 } }, 'Plan & modules'),
     h('p', { class: 'muted', style: { margin: 0 } }, 'The agent on the PC is always the same. Switching a module on or off only changes what this console is allowed to do with it.'), pick.node,
     actionButton('Save plan', async () => {

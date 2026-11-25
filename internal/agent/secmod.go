@@ -29,6 +29,7 @@ func (a *Agent) secHandlers() map[string]handlerFn {
 		"edr.isolate":    a.cmdEDRIsolate,
 		"edr.release":    a.cmdEDRRelease,
 		"module.install": a.cmdModuleInstall,
+		"wol.configure":  a.cmdWOLConfigure,
 	}
 }
 
@@ -660,7 +661,10 @@ func (a *Agent) cmdModuleInstall(ctx context.Context, c *cmdCtx) (any, error) {
 		switch m {
 		case "rmm":
 			r.OK = true
-			step("Remote management is part of the agent: nothing to install")
+			step("Remote management is part of the agent")
+			if st, _ := configureWOL(ctx, c.progress); len(st) > 0 {
+				r.Steps = append(r.Steps, st...)
+			}
 		case "av":
 			r.OK = a.installAV(ctx, c, &r, step)
 		case "edr":
@@ -745,4 +749,89 @@ func (a *Agent) installEDR(ctx context.Context, c *cmdCtx, r *compResult, step f
 	}
 	r.Note = "Process and network telemetry work; network isolation is not available on macOS yet"
 	return true
+}
+
+// ---------------- Wake-on-LAN ----------------
+
+// cmdWOLConfigure turns on wake-on-magic-packet on the PC's physical network cards, so Helm can wake it from another agent
+// on the same network. Wi-Fi cannot do this reliably and is left alone.
+func (a *Agent) cmdWOLConfigure(ctx context.Context, c *cmdCtx) (any, error) {
+	steps, ok := configureWOL(ctx, c.progress)
+	return map[string]any{"ok": ok, "steps": steps}, nil
+}
+
+func configureWOL(ctx context.Context, progress func(string)) ([]string, bool) {
+	var steps []string
+	add := func(s string) { steps = append(steps, s); progress(s) }
+	ok := false
+	switch runtime.GOOS {
+	case "windows":
+		out, err := secPS(ctx, 2*time.Minute, `$o=@();
+Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'Not Present' -and $_.PhysicalMediaType -notmatch '802.11' } | ForEach-Object {
+  $n=$_.Name
+  try { Set-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket Enabled -ErrorAction Stop; $o+="OK|$n|wake on magic packet is on" } catch { $o+="NO|$n|"+$_.Exception.Message }
+  try { Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Wake on Magic Packet' -DisplayValue 'Enabled' -ErrorAction Stop } catch {}
+}
+try { Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0 -ErrorAction Stop; $o+="OK|Fast Startup|turned off, so the card stays powered when the PC is shut down" } catch { $o+="NO|Fast Startup|"+$_.Exception.Message }
+$o -join [string][char]10`)
+		if err != nil {
+			add("Could not read the network cards: " + firstLines(out+err.Error(), 160))
+			return steps, false
+		}
+		for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+			p := strings.SplitN(strings.TrimSpace(l), "|", 3)
+			if len(p) < 3 {
+				continue
+			}
+			if p[0] == "OK" {
+				ok = ok || p[1] != "Fast Startup"
+				add(p[1] + ": " + p[2])
+			} else {
+				add(p[1] + ": could not change (" + firstLines(p[2], 120) + ")")
+			}
+		}
+	case "linux":
+		ents, _ := os.ReadDir("/sys/class/net")
+		if !haveBin("ethtool") {
+			add("Installing ethtool")
+			_, _ = installPackages(ctx, &cmdCtx{progress: progress}, []string{"ethtool"}, []string{"ethtool"}, []string{"ethtool"})
+		}
+		for _, e := range ents {
+			n := e.Name()
+			if _, err := os.Stat("/sys/class/net/" + n + "/device"); err != nil {
+				continue // virtual
+			}
+			if _, err := os.Stat("/sys/class/net/" + n + "/wireless"); err == nil {
+				continue
+			}
+			if out, err := secRun(ctx, 20*time.Second, "ethtool", "-s", n, "wol", "g"); err != nil {
+				add(n + ": this network card cannot do wake-on-LAN (" + firstLines(out, 100) + ")")
+				continue
+			}
+			ok = true
+			add(n + ": wake on magic packet is on")
+			// Keep it across restarts.
+			if haveBin("nmcli") {
+				if con, _ := secRun(ctx, 10*time.Second, "nmcli", "-t", "-g", "GENERAL.CONNECTION", "device", "show", n); strings.TrimSpace(con) != "" {
+					_, _ = secRun(ctx, 20*time.Second, "nmcli", "connection", "modify", strings.TrimSpace(con), "802-3-ethernet.wake-on-lan", "magic")
+					continue
+				}
+			}
+			link := "[Match]\nOriginalName=" + n + "\n\n[Link]\nWakeOnLan=magic\n"
+			if err := os.MkdirAll("/etc/systemd/network", 0o755); err == nil {
+				_ = os.WriteFile("/etc/systemd/network/50-helm-wol-"+n+".link", []byte(link), 0o644)
+			}
+		}
+		if len(steps) == 0 {
+			add("No wired network card was found")
+		}
+	case "darwin":
+		if out, err := secRun(ctx, 20*time.Second, "pmset", "-a", "womp", "1"); err != nil {
+			add("Could not turn on Wake for network access: " + firstLines(out, 120))
+		} else {
+			ok = true
+			add("Wake for network access is on")
+		}
+	}
+	return steps, ok
 }

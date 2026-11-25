@@ -66,6 +66,7 @@ var commands = map[string]cmdSpec{
 	"edr.isolate":    {true, 2 * time.Minute},
 	"edr.release":    {false, 2 * time.Minute},
 	"module.install": {false, 50 * time.Minute},
+	"wol.configure":  {false, 5 * time.Minute},
 }
 
 // cmdModules lists which modules unlock a command. nil means every PC may be sent it.

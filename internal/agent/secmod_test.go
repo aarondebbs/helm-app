@@ -31,7 +31,7 @@ func TestHexAddr(t *testing.T) {
 // Every command the server can send must exist on the agent, or the PC answers "unknown command".
 func TestSecHandlersRegistered(t *testing.T) {
 	a := &Agent{}
-	for _, n := range []string{"av.status", "av.scan", "av.update", "av.threats", "edr.snapshot", "edr.isolate", "edr.release", "module.install"} {
+	for _, n := range []string{"av.status", "av.scan", "av.update", "av.threats", "edr.snapshot", "edr.isolate", "edr.release", "module.install", "wol.configure"} {
 		if _, ok := a.handlers()[n]; !ok {
 			t.Errorf("agent has no handler for %s", n)
 		}
