@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -318,7 +319,13 @@ func linuxShell() string {
 	return "sh"
 }
 
-func publicDirOS() string { return "" }
+// publicDirOS: on macOS the menu-bar app (running as the signed-in user) reads the status the root daemon writes here.
+func publicDirOS() string {
+	if runtime.GOOS == "darwin" {
+		return "/Library/Application Support/Helm/public"
+	}
+	return ""
+}
 
 func (a *Agent) trayKeeper(ctx context.Context) {}
 

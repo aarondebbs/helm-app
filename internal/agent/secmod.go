@@ -135,7 +135,17 @@ func (a *Agent) cmdAVScan(ctx context.Context, c *cmdCtx) (any, error) {
 		return map[string]any{"engine": "Microsoft Defender", "kind": args.Kind, "done": true, "recent": json.RawMessage(nonEmptyJSON(th))}, nil
 	case "linux", "darwin":
 		if !haveBin("clamscan") {
-			return nil, errors.New("ClamAV is not installed on this machine (apt install clamav / brew install clamav)")
+			if runtime.GOOS == "darwin" {
+				// No ClamAV: use what macOS itself offers. Gatekeeper checks every app and installer against
+				// Apple's notarisation and XProtect blocklist.
+				found, n, err := macGatekeeperScan(ctx, c, args.Kind, args.Path)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"engine": "macOS Gatekeeper and XProtect", "kind": args.Kind, "done": true, "checked": n, "infected": found,
+					"note": "Gatekeeper checks apps and installers (signature, notarisation, Apple's blocklist). It does not read every file like an antivirus. Install ClamAV with Homebrew for that."}, nil
+			}
+			return nil, errors.New("ClamAV is not installed on this machine (apt install clamav)")
 		}
 		targets := []string{"/home", "/tmp", "/var/tmp", "/root"}
 		cargs := []string{"-r", "--no-summary"}
@@ -1084,3 +1094,82 @@ func installLinuxRealtime(ctx context.Context, c *cmdCtx, r *compResult, step fu
 
 // setupOpts are the per-PC switches the server sent with the last setup. They also decide what a later retry does.
 type setupOpts struct{ fastStartupOff, linuxRealtime bool }
+
+// macGatekeeperScan assesses apps and installers with spctl, which applies Apple's notarisation rules and XProtect.
+// A rejection is a flag to look at, not proof of malware (unsigned developer tools are rejected too).
+func macGatekeeperScan(ctx context.Context, c *cmdCtx, kind, path string) ([]string, int, error) {
+	var roots []string
+	homes, _ := filepath.Glob("/Users/*")
+	switch kind {
+	case "path":
+		p, err := normPath(path)
+		if err != nil {
+			return nil, 0, err
+		}
+		roots = []string{p}
+	case "quick", "full":
+		roots = []string{"/Applications"}
+		for _, h := range homes {
+			if filepath.Base(h) == "Shared" {
+				continue
+			}
+			roots = append(roots, filepath.Join(h, "Downloads"), filepath.Join(h, "Desktop"), filepath.Join(h, "Applications"))
+		}
+		if kind == "full" {
+			roots = append(roots, "/Library/Application Support", "/usr/local/bin", "/opt")
+		}
+	default:
+		return nil, 0, errors.New("unknown scan kind")
+	}
+	type item struct{ path, typ string }
+	var items []item
+	c.progress("Looking for apps and installers")
+	for _, r := range roots {
+		_ = filepath.WalkDir(r, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if ctx.Err() != nil {
+				return filepath.SkipAll
+			}
+			depth := strings.Count(strings.TrimPrefix(p, r), "/")
+			if d.IsDir() {
+				if strings.HasSuffix(p, ".app") {
+					items = append(items, item{p, "execute"})
+					return filepath.SkipDir
+				}
+				if depth > 3 {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			switch strings.ToLower(filepath.Ext(p)) {
+			case ".pkg", ".dmg":
+				items = append(items, item{p, "install"})
+			}
+			if kind == "path" && len(items) == 0 && depth == 0 {
+				items = append(items, item{p, "execute"})
+			}
+			return nil
+		})
+	}
+	if len(items) == 0 {
+		c.progress("Nothing to check in " + strings.Join(roots, ", "))
+	}
+	var found []string
+	for i, it := range items {
+		if ctx.Err() != nil {
+			return found, i, ctx.Err()
+		}
+		out, err := secRun(ctx, 60*time.Second, "spctl", "--assess", "--type", it.typ, it.path)
+		if err != nil {
+			found = append(found, it.path+": rejected by Gatekeeper ("+firstLines(strings.TrimSpace(out), 120)+") FOUND")
+		}
+		msg := fmt.Sprintf("Checked %d of %d apps and installers", i+1, len(items))
+		if len(found) > 0 {
+			msg += fmt.Sprintf(", %d flagged", len(found))
+		}
+		c.pct((i+1)*100/len(items), msg+" · "+filepath.Base(it.path))
+	}
+	return found, len(items), nil
+}

@@ -1,6 +1,13 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.13', date: '2026-11-25', title: 'Mac installer, menu-bar icon, scans without ClamAV', new: [
+    'A Helm icon in the Mac menu bar (at the top of the screen) shows whether the Mac is connected, and offers Chat with support, Request support and About. It comes with the .pkg installer.',
+    'Antivirus scans now work on Macs without ClamAV. Helm checks every app and installer with Gatekeeper and XProtect and lists anything Apple rejects. A rejection is something to look at, not proof of malware.',
+  ], fixed: [
+    'The Mac .pkg no longer installs silently and does nothing. It now finds the enrollment file in Downloads, Desktop or beside the package, and if there is none it tells you on the Mac what to do. The console lists the two steps in order.',
+    'Scan failed with an error on every PC that does not use ClamAV.',
+  ] },
   { v: '1.0.12', date: '2026-11-25', title: 'PC options, retried setup, offline fixes', new: [
     'PC options (Plan & modules): turn Windows Fast Startup off for Wake-on-LAN from shutdown, and turn on Linux real-time antivirus, per PC. Both are off until you choose. Real-time on a Linux PC that already had it is switched off when you untick it.',
     'Setup that fails or leaves something not ready is retried once a day, up to five times. After that the PC shows a warning on its Antivirus tab.',

@@ -994,11 +994,15 @@ function viewEnroll() {
         cmdBlock(`curl -fsSL ${base}/dl/install-macos.sh | sudo bash -s -- ${flags}`),
         has('Helm-Agent-macos-arm64.pkg') || has('Helm-Agent-macos-amd64.pkg') ? h('div', { style: { marginTop: '18px' } },
           h('h4', null, 'Prefer a double-click installer?'),
-          h('p', { class: 'muted' }, 'Download the package for the Mac’s chip and the enrollment file below, keep both in the same folder, then open the package. Apple silicon = M1 or newer.'),
+          h('p', { class: 'muted' }, 'The package has no token inside it, so it needs the enrollment file as well. Do both steps, in this order:'),
+          h('ol', { class: 'muted', style: { margin: '0 0 10px 18px', padding: 0 } },
+            h('li', null, 'Download the enrollment file. Keep it in Downloads.'),
+            h('li', null, 'Download the package for the Mac’s chip (Apple silicon = M1 or newer) and open it.')),
           h('div', { class: 'row' },
-            has('Helm-Agent-macos-arm64.pkg') ? h('a', { class: 'btn', href: '/dl/Helm-Agent-macos-arm64.pkg', download: '' }, icon('download'), 'Package (Apple silicon)') : null,
-            has('Helm-Agent-macos-amd64.pkg') ? h('a', { class: 'btn', href: '/dl/Helm-Agent-macos-amd64.pkg', download: '' }, icon('download'), 'Package (Intel)') : null,
-            actionButton('Enrollment file (helm-enroll.conf)', () => fetchInstaller('macos-conf', r.token, 'helm-enroll.conf')))) : null],
+            actionButton('1. Enrollment file (helm-enroll.conf)', () => fetchInstaller('macos-conf', r.token, 'helm-enroll.conf'), 'primary'),
+            has('Helm-Agent-macos-arm64.pkg') ? h('a', { class: 'btn', href: '/dl/Helm-Agent-macos-arm64.pkg', download: '' }, icon('download'), '2. Package (Apple silicon)') : null,
+            has('Helm-Agent-macos-amd64.pkg') ? h('a', { class: 'btn', href: '/dl/Helm-Agent-macos-amd64.pkg', download: '' }, icon('download'), '2. Package (Intel)') : null),
+          h('p', { class: 'muted small-text' }, 'If the Mac says installed and nothing appears here, the enrollment file was missing or expired (30 minutes). Make a new one and open the package again.')) : null],
     };
     const paneBox = h('div');
     const drawPane = () => clear(paneBox).append(panes[osTab]());
