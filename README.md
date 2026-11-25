@@ -1,5 +1,7 @@
 # Helm
 
+[![release](https://github.com/aarondebbs/helm-app/actions/workflows/release.yml/badge.svg)](https://github.com/aarondebbs/helm-app/actions/workflows/release.yml)
+
 Manage Windows PCs from anywhere: a small background agent (installed with an MSI) plus a web console
 that runs on your Raspberry Pi and is published with Tailscale Funnel.
 
