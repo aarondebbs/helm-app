@@ -18,14 +18,15 @@ type Settings struct {
 		Token   string `json:"token"`
 		ChatID  string `json:"chatId"`
 	} `json:"telegram"`
-	Email          EmailSettings   `json:"email"`
-	Brand          Brand           `json:"brand"`
-	NVDKey         string          `json:"nvdKey"`
-	OfflineMinutes int             `json:"offlineMinutes"`
-	DiskFreePct    int             `json:"diskFreePct"`
-	AutoScan       bool            `json:"autoScan"`
-	ScanEveryHours int             `json:"scanEveryHours"`
-	Rules          map[string]bool `json:"rules"`
+	Email          EmailSettings     `json:"email"`
+	Brand          Brand             `json:"brand"`
+	MakerLogos     map[string]string `json:"makerLogos,omitempty"` // uploaded PNG per maker or OS, e.g. "dell", "windows"
+	NVDKey         string            `json:"nvdKey"`
+	OfflineMinutes int               `json:"offlineMinutes"`
+	DiskFreePct    int               `json:"diskFreePct"`
+	AutoScan       bool              `json:"autoScan"`
+	ScanEveryHours int               `json:"scanEveryHours"`
+	Rules          map[string]bool   `json:"rules"`
 	// Cloud updates: GitHub "owner/repo" holding signed releases; agents are imported automatically unless manual.
 	UpdateRepo         string `json:"updateRepo"`
 	ManualAgentUpdates bool   `json:"manualAgentUpdates"`

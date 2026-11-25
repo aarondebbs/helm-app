@@ -12,8 +12,17 @@ const ART = {
 const KIND_LABEL = { laptop: 'Laptop', desktop: 'Desktop', pi: 'Raspberry Pi', vm: 'Virtual machine', server: 'Server' };
 const deviceKind = d => { const k = d && d.hello && d.hello.chassis; return ART[k] ? k : (osKey(d) === 'windows' ? 'desktop' : 'desktop'); };
 
+// The logo you uploaded for this PC's maker (Dell, Lenovo...), or for its system (Windows...), if there is one.
+function makerLogo(d) {
+  const m = S.makerLogos || {}, hh = (d && d.hello) || {};
+  const v = String(hh.vendor || '').toLowerCase(), o = ({ windows: 'windows', linux: 'linux', darwin: 'macos', macos: 'macos' })[String(hh.os || '').toLowerCase()];
+  return m[v] || (o && m[o]) || '';
+}
+
 function deviceArt(d, size) {
-  const k = deviceKind(d), box = h('span', { class: 'dart' + (d.online ? ' on' : ''), title: KIND_LABEL[k] || 'Computer', style: { '--s': (size || 40) + 'px' } });
+  const k = deviceKind(d), box = h('span', { class: 'dart' + (d.online ? ' on' : ''), title: makeText(d) || KIND_LABEL[k] || 'Computer', style: { '--s': (size || 40) + 'px' } });
+  const logo = makerLogo(d);
+  if (logo) { box.classList.add('haslogo'); box.append(h('img', { class: 'dlogo', src: logo, alt: '' }), h('i', { class: 'dstat' })); return box; }
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 48 48'); svg.setAttribute('aria-hidden', 'true'); svg.innerHTML = ART[k];
   box.append(svg, h('i', { class: 'dstat' }));

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -78,4 +79,54 @@ func (s *Server) handleBrandLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write(b)
+}
+
+var reMakerKey = regexp.MustCompile(`^[a-z0-9][a-z0-9 .+-]{0,29}$`)
+
+// handleMakerLogos returns the logos you uploaded for PC makers (Dell, Lenovo, Raspberry Pi...) and systems (Windows...).
+func (s *Server) handleMakerLogos(w http.ResponseWriter, r *http.Request, sess *session) {
+	m := s.db.settings().MakerLogos
+	if m == nil {
+		m = map[string]string{}
+	}
+	writeJSON(w, 200, m)
+}
+
+// handleMakerLogoPut sets or (with an empty logo) removes one logo. Helm ships no third-party logos; these are yours.
+func (s *Server) handleMakerLogoPut(w http.ResponseWriter, r *http.Request, sess *session) {
+	if sess.Role == "viewer" {
+		writeErr(w, 403, "not allowed")
+		return
+	}
+	var req struct{ Key, Logo string }
+	if !readJSON(w, r, &req) {
+		return
+	}
+	req.Key = strings.ToLower(strings.TrimSpace(req.Key))
+	if !reMakerKey.MatchString(req.Key) {
+		writeErr(w, 400, "the name must be 1 to 30 letters, numbers or spaces")
+		return
+	}
+	if err := checkPNGLogo(req.Logo); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	full := false
+	s.db.update(func(d *dbData) {
+		if d.Settings.MakerLogos == nil {
+			d.Settings.MakerLogos = map[string]string{}
+		}
+		if req.Logo == "" {
+			delete(d.Settings.MakerLogos, req.Key)
+		} else if _, had := d.Settings.MakerLogos[req.Key]; had || len(d.Settings.MakerLogos) < 40 {
+			d.Settings.MakerLogos[req.Key] = req.Logo
+		} else {
+			full = true
+		}
+	})
+	if full {
+		writeErr(w, 400, "up to 40 logos can be stored")
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }

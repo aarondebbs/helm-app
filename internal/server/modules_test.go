@@ -92,3 +92,17 @@ func TestReusableInstallerUntilRevoked(t *testing.T) {
 		t.Fatal("a revoked installer must stop working")
 	}
 }
+
+func TestSetupWaitsForOfflinePC(t *testing.T) {
+	s := newTestServer(t)
+	s.kickAV("offline-pc", []string{"rmm", "av"}) // no agent is connected
+	var got []string
+	s.db.view(func(x *dbData) {
+		if r := x.AV["offline-pc"]; r != nil {
+			got = r.SetupPending
+		}
+	})
+	if len(got) != 2 {
+		t.Fatalf("setup should be remembered for an offline PC, got %v", got)
+	}
+}

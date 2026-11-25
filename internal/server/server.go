@@ -210,6 +210,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/auth/config", s.handleAuthConfig)
 	mux.HandleFunc("GET /api/brand/logo", s.handleBrandLogo)
 	mux.HandleFunc("PUT /api/brand", s.authed(s.handleBrandPut, true))
+	mux.HandleFunc("GET /api/maker-logos", s.authed(s.handleMakerLogos, false))
+	mux.HandleFunc("PUT /api/maker-logos", s.authed(s.handleMakerLogoPut, true))
 	mux.HandleFunc("GET /api/update", s.authed(s.handleUpdateGet, false))
 	mux.HandleFunc("GET /api/update/releases", s.authed(s.handleUpdateReleases, false))
 	mux.HandleFunc("POST /api/update/check", s.authed(s.handleUpdateCheck, false))

@@ -683,6 +683,7 @@ async function boot() {
 }
 function boot2() {
   navigate();
+  api('GET', '/api/maker-logos').then(m => { S.makerLogos = m || {}; if (Object.keys(S.makerLogos).length && !S.logosPainted) { S.logosPainted = true; navigate(); } }).catch(() => { });
   if (!S.version) api('GET', '/api/info').then(i => { S.version = i.version || ''; const v = $('#ver'); if (i.brand) { S.brand = i.brand; paintBrand(); }
     if (v && S.version) { v.textContent = 'v' + S.version; if (unseenVersion()) v.append(h('i', { id: 'verdot', class: 'verdot' })); } maybeShowWhatsNew(); }).catch(() => { /* optional */ });
 }

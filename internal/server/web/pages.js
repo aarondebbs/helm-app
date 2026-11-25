@@ -513,10 +513,10 @@ async function viewSettings() {
     grid.querySelectorAll('.panel').forEach(p => { const t = p.querySelector('h3'); if (t) by[t.textContent] = p; });
     by['Google sign-in'] = googlePanel();
     by['Appearance'] = appearancePanel();
-    if (S.role !== 'viewer') by['Branding'] = brandPanel();
+    if (S.role !== 'viewer') { by['Branding'] = brandPanel(); by['Maker logos'] = makerLogosPanel(); }
     by['Patch window'] = patchWindowPanel();
     const groups = [['updates', 'Updates', ['Updates', 'Patch window']], ['alerts', 'Alerts and notifications', ['Alert rules', 'Thresholds', 'Telegram notifications']],
-      ['scanning', 'Scanning', ['Vulnerability scanning']], ['signin', 'Sign-in', ['Google sign-in']], ['look', 'Appearance', ['Appearance', 'Branding']], ['backups', 'Backups and health', ['Backups and health']]];
+      ['scanning', 'Scanning', ['Vulnerability scanning']], ['signin', 'Sign-in', ['Google sign-in']], ['look', 'Appearance', ['Appearance', 'Branding', 'Maker logos']], ['backups', 'Backups and health', ['Backups and health']]];
     let cur = store.get('settab', 'updates'); if (!groups.some(g => g[0] === cur)) cur = 'updates';
     const saveRow = host.lastChild, tabsEl = h('div', { class: 'tabs' }), panes = {};
     const show = k => { cur = k; store.set('settab', k); groups.forEach(([id]) => { panes[id].classList.toggle('hidden', id !== k); }); [...tabsEl.children].forEach((a, n) => a.classList.toggle('active', groups[n][0] === k)); saveRow.classList.toggle('hidden', k === 'backups' || k === 'signin'); };
@@ -729,4 +729,29 @@ function relBody(x) {
   if (e) return changeBlock(e, 'h4');
   const notes = (x.notes || '').replace(/\*\*Full Changelog\*\*:.*$/m, '').trim();
   return h('pre', { class: 'relnotes' }, notes || 'No release log was written for this version.');
+}
+
+// Logos you upload for PC makers and systems. Helm does not ship any: use the files the makers publish for this.
+function makerLogosPanel() {
+  const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
+  (async () => {
+    let logos = {}, devs = [];
+    try { [logos, devs] = await Promise.all([api('GET', '/api/maker-logos'), getDevices()]); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
+    S.makerLogos = logos;
+    const keys = new Set(Object.keys(logos));
+    devs.forEach(d => { const hh = d.hello || {}; if (hh.vendor) keys.add(hh.vendor.toLowerCase()); const o = ({ windows: 'windows', linux: 'linux', darwin: 'macos', macos: 'macos' })[String(hh.os || '').toLowerCase()]; if (o) keys.add(o); });
+    const label = k => ({ windows: 'Windows', linux: 'Linux', macos: 'macOS' })[k] || k.replace(/\b\w/g, c => c.toUpperCase());
+    const draw = () => {
+      clear(box).append(h('p', { class: 'muted small-text', style: { margin: 0 } }, 'Helm does not include any company logos. Upload the official PNG from each maker (up to 64 KB, transparent background works best) and it replaces the drawing for those PCs. A maker\'s logo wins over the system logo.'),
+        table(['Maker or system', 'Logo', ''].map(x => ({ label: x })), [...keys].sort().map(k => {
+          const file = h('input', { type: 'file', accept: 'image/png', class: 'hidden' });
+          const set = async data => { await api('PUT', '/api/maker-logos', { key: k, logo: data }); if (data) logos[k] = data; else delete logos[k]; S.makerLogos = logos; draw(); };
+          file.addEventListener('change', () => { const f = file.files[0]; if (!f) return; if (f.type !== 'image/png' || f.size > 64 * 1024) { toast('Use a PNG of at most 64 KB', 'bad'); return; } const rd = new FileReader(); rd.onload = () => set(String(rd.result)).catch(e => toast(e.message, 'bad')); rd.readAsDataURL(f); });
+          return h('tr', null, h('td', null, label(k)), h('td', null, logos[k] ? h('img', { src: logos[k], alt: '', style: { height: '28px', maxWidth: '90px', objectFit: 'contain' } }) : h('span', { class: 'muted' }, 'none')),
+            h('td', null, h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => file.click() }, logos[k] ? 'Replace' : 'Upload'), file, logos[k] ? h('button', { type: 'button', class: 'danger', onclick: () => set('').catch(e => toast(e.message, 'bad')) }, 'Remove') : null)));
+        }), { empty: 'Makers appear here once your PCs report them.' }));
+    };
+    draw();
+  })();
+  return panel('Maker logos', 'Show a maker or system logo on its PCs', null, box);
 }

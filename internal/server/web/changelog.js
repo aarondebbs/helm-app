@@ -1,6 +1,11 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.10', date: '2026-11-25', title: 'Maker logos, and setup waits for offline PCs', new: [
+    'Maker logos: under Settings → Appearance → Maker logos, upload the official PNG for Dell, Lenovo, Raspberry Pi, Windows and so on. It replaces the drawing on every PC from that maker, and a maker logo wins over the system logo. Helm does not include any company logos itself.',
+  ], fixed: [
+    'If you save a plan while a PC is offline, its setup (antivirus engine, Wake-on-LAN, firewall tool) now runs when the PC next connects instead of being dropped.',
+  ] },
   { v: '1.0.9', date: '2026-11-25', title: 'Missed scans run when the PC starts', better: [
     'A PC without real-time protection that was off during the quiet hours now gets its overdue quick scan about two minutes after it connects. A weekly full scan that is overdue still waits for the quiet hours.',
   ] },

@@ -21,19 +21,25 @@ const (
 
 // AVRec is what Helm last learned about the antivirus engine of one PC.
 type AVRec struct {
-	StatusAt  time.Time       `json:"statusAt"`
-	Status    json.RawMessage `json:"status,omitempty"`
-	UpdatedAt time.Time       `json:"updatedAt"`           // last successful signature update that Helm started
-	LastQuick time.Time       `json:"lastQuick,omitempty"` // last scan Helm started by itself
-	LastFull  time.Time       `json:"lastFull,omitempty"`
-	LastErr   string          `json:"lastErr,omitempty"`
-	LastErrAt time.Time       `json:"lastErrAt,omitempty"`
+	StatusAt     time.Time       `json:"statusAt"`
+	Status       json.RawMessage `json:"status,omitempty"`
+	UpdatedAt    time.Time       `json:"updatedAt"`              // last successful signature update that Helm started
+	SetupPending []string        `json:"setupPending,omitempty"` // modules whose setup could not run because the PC was offline
+	LastQuick    time.Time       `json:"lastQuick,omitempty"`    // last scan Helm started by itself
+	LastFull     time.Time       `json:"lastFull,omitempty"`
+	LastErr      string          `json:"lastErr,omitempty"`
+	LastErrAt    time.Time       `json:"lastErrAt,omitempty"`
 }
 
 func (s *Server) storeAV(j Job) {
 	// An agent from before 1.0.1 does not know module.install. Carry on without it: the antivirus engine it
 	// already has is still updated and read, and installing one needs the agent update.
 	if j.Name == "module.install" && (j.Status == "ok" || strings.Contains(j.Err, "unknown command")) {
+		s.db.update(func(d *dbData) {
+			if r := d.AV[j.DeviceID]; r != nil {
+				r.SetupPending = nil
+			}
+		})
 		var a struct{ Modules []string }
 		_ = json.Unmarshal(j.Args, &a)
 		for _, m := range a.Modules {
@@ -73,6 +79,35 @@ func (s *Server) storeAV(j Job) {
 // kickAV installs whatever the chosen modules need on the PC (an antivirus engine, a firewall tool).
 // When that finishes, storeAV starts the first definition update.
 func (s *Server) kickAV(id string, mods []string) {
+	args, _ := json.Marshal(map[string]any{"modules": mods})
+	if _, err := s.hub.dispatch(id, "module.install", args, "auto-setup"); err != nil {
+		// Offline: remember it and do it when the PC next connects.
+		s.db.update(func(d *dbData) {
+			if d.AV == nil {
+				d.AV = map[string]*AVRec{}
+			}
+			r := d.AV[id]
+			if r == nil {
+				r = &AVRec{}
+				d.AV[id] = r
+			}
+			r.SetupPending = append([]string(nil), mods...)
+		})
+	}
+}
+
+// runPendingSetup does the setup that was waiting for this PC to come online.
+func (s *Server) runPendingSetup(id string) {
+	var mods []string
+	s.db.view(func(x *dbData) {
+		if r := x.AV[id]; r != nil {
+			mods = append(mods, r.SetupPending...)
+		}
+	})
+	if len(mods) == 0 {
+		return
+	}
+	time.Sleep(10 * time.Second) // let the connection settle
 	args, _ := json.Marshal(map[string]any{"modules": mods})
 	_, _ = s.hub.dispatch(id, "module.install", args, "auto-setup")
 }
