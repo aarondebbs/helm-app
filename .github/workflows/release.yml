@@ -14,7 +14,25 @@ permissions:
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.c.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=false
+          if [ "${{ github.ref_type }}" = "branch" ] && [ "${{ github.event_name }}" = "push" ]; then
+            t="v$(tr -d '[:space:]' < VERSION)"
+            if gh release view "$t" --repo "${{ github.repository }}" >/dev/null 2>&1; then skip=true; fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
   macos-pkg:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     # The .pkg can only be built with Apple's pkgbuild, so a macOS runner does it.
     runs-on: macos-latest
     steps:
@@ -37,7 +55,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: macos-pkg, path: extra/*.pkg }
   build:
-    needs: macos-pkg
+    needs: [check, macos-pkg]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
