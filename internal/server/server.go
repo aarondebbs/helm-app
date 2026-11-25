@@ -258,6 +258,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.authed(s.handleSettingsGet, false))
 	mux.HandleFunc("PUT /api/settings", s.authed(s.handleSettingsPut, true))
 	mux.HandleFunc("POST /api/settings/telegram-test", s.authed(s.handleTelegramTest, true))
+	mux.HandleFunc("POST /api/settings/email-test", s.authed(s.handleEmailTest, true))
 	mux.HandleFunc("GET /api/scripts", s.authed(s.handleScripts, false))
 	mux.HandleFunc("POST /api/scripts", s.authed(s.handleScriptSave, true))
 	mux.HandleFunc("PUT /api/scripts/{id}", s.authed(s.handleScriptSave, true))

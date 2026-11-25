@@ -169,3 +169,26 @@ func TestCSVFormulaInjection(t *testing.T) {
 		t.Errorf("formulas must be neutralised: %q", body)
 	}
 }
+
+func TestValidateEmail(t *testing.T) {
+	ok := EmailSettings{Enabled: true, Host: "smtp.example.com", Security: "starttls", From: "Helm <helm@example.com>", To: "a@example.com, b@example.com"}
+	if err := validateEmail(&ok); err != nil || ok.Port != 587 {
+		t.Fatalf("valid settings rejected or port not defaulted: %v %d", err, ok.Port)
+	}
+	for name, mod := range map[string]func(*EmailSettings){
+		"newline in host": func(e *EmailSettings) { e.Host = "a.com\r\nRCPT TO:x" },
+		"url as host":     func(e *EmailSettings) { e.Host = "smtp://x.com" },
+		"bad from":        func(e *EmailSettings) { e.From = "nope" },
+		"no recipients":   func(e *EmailSettings) { e.To = "" },
+		"bad security":    func(e *EmailSettings) { e.Security = "ssl3" },
+	} {
+		e := ok
+		mod(&e)
+		if validateEmail(&e) == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if got := cleanHeader("a\r\nBcc: x"); strings.ContainsAny(got, "\r\n") {
+		t.Errorf("header not cleaned: %q", got)
+	}
+}

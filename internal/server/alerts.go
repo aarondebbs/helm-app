@@ -42,21 +42,32 @@ func sendTelegram(ctx context.Context, token, chat, text string) error {
 	return nil
 }
 
-// notify sends a message to Telegram if configured. It never blocks the caller.
+// notify sends a message to every configured channel (Telegram, e-mail). It never blocks the caller.
 func (s *Server) notify(text string) {
 	set := s.db.settings()
-	if !set.Telegram.Enabled || set.Telegram.Token == "" || set.Telegram.ChatID == "" {
-		return
+	if set.Telegram.Enabled && set.Telegram.Token != "" && set.Telegram.ChatID != "" {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := sendTelegram(ctx, set.Telegram.Token, set.Telegram.ChatID, text); err != nil {
+				s.log.Printf("telegram: %v", err)
+			}
+		}()
 	}
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if err := sendTelegram(ctx, set.Telegram.Token, set.Telegram.ChatID, text); err != nil {
-			s.log.Printf("telegram: %v", err)
-		}
-	}()
+	if set.Email.ready() {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+			defer cancel()
+			subj := "Helm: " + firstLine(text, 90)
+			if err := sendEmail(ctx, set.Email, subj, text); err != nil {
+				s.log.Printf("email: %v", err)
+			}
+		}()
+	}
 }
 
 // ---- alert evaluation ----
@@ -121,6 +132,9 @@ func (s *Server) alertConditions(set Settings) []cond {
 				}
 				out = append(out, cond{RuleSecurity, "security:" + d.ID, d.ID, d.Name, sev, fmt.Sprintf("%s has %d critical and %d high security findings", d.Name, crit, high),
 					"Most severe: " + top})
+			}
+			if v.RebootPending {
+				out = append(out, cond{RuleReboot, "reboot:" + d.ID, d.ID, d.Name, "info", d.Name + " needs a restart", "A restart is waiting to finish installing updates. Open the PC and choose Restart."})
 			}
 			missing := 0
 			for _, f := range v.Findings {
@@ -271,6 +285,16 @@ type settingsView struct {
 		ChatID   string `json:"chatId"`
 		TokenSet bool   `json:"tokenSet"`
 	} `json:"telegram"`
+	Email struct {
+		Enabled  bool   `json:"enabled"`
+		Host     string `json:"host"`
+		Port     int    `json:"port"`
+		Security string `json:"security"`
+		User     string `json:"user"`
+		PassSet  bool   `json:"passSet"`
+		From     string `json:"from"`
+		To       string `json:"to"`
+	} `json:"email"`
 	NVDKeySet          bool            `json:"nvdKeySet"`
 	OfflineMinutes     int             `json:"offlineMinutes"`
 	DiskFreePct        int             `json:"diskFreePct"`
@@ -294,6 +318,11 @@ func (s *Server) settingsView() settingsView {
 	v := settingsView{NVDKeySet: set.NVDKey != "", OfflineMinutes: set.OfflineMinutes, DiskFreePct: set.DiskFreePct,
 		AutoScan: set.AutoScan, ScanEveryHours: set.ScanEveryHours, Rules: set.Rules, CVE: s.cve.status(), UpdateRepo: set.UpdateRepo, ManualAgentUpdates: set.ManualAgentUpdates}
 	v.Telegram.Enabled, v.Telegram.ChatID, v.Telegram.TokenSet = set.Telegram.Enabled, set.Telegram.ChatID, set.Telegram.Token != ""
+	em := set.Email
+	v.Email.Enabled, v.Email.Host, v.Email.Port, v.Email.Security, v.Email.User, v.Email.PassSet, v.Email.From, v.Email.To = em.Enabled, em.Host, em.Port, em.Security, em.User, em.Pass != "", em.From, em.To
+	if v.Email.Security == "" {
+		v.Email.Security, v.Email.Port = "starttls", 587
+	}
 	for _, r := range ruleInfo {
 		v.RuleInfo = append(v.RuleInfo, ruleDesc{r.ID, r.Title, r.Desc})
 	}
@@ -312,6 +341,17 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, sess 
 			Token      string `json:"token"`
 			ClearToken bool   `json:"clearToken"`
 		} `json:"telegram"`
+		Email struct {
+			Enabled   bool   `json:"enabled"`
+			Host      string `json:"host"`
+			Port      int    `json:"port"`
+			Security  string `json:"security"`
+			User      string `json:"user"`
+			Pass      string `json:"pass"`
+			ClearPass bool   `json:"clearPass"`
+			From      string `json:"from"`
+			To        string `json:"to"`
+		} `json:"email"`
 		NVDKey             *string         `json:"nvdKey"`
 		OfflineMinutes     int             `json:"offlineMinutes"`
 		DiskFreePct        int             `json:"diskFreePct"`
@@ -337,6 +377,13 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, sess 
 		writeErr(w, 400, "bad Telegram token or chat id")
 		return
 	}
+	em := EmailSettings{Enabled: req.Email.Enabled, Host: req.Email.Host, Port: req.Email.Port, Security: req.Email.Security, User: req.Email.User, From: req.Email.From, To: req.Email.To}
+	if em.Host != "" || em.Enabled {
+		if err := validateEmail(&em); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+	}
 	if req.OfflineMinutes < 0 || req.OfflineMinutes > 10080 || req.DiskFreePct < 0 || req.DiskFreePct > 90 || req.ScanEveryHours < 1 || req.ScanEveryHours > 24*30 {
 		writeErr(w, 400, "a setting is out of range")
 		return
@@ -350,6 +397,15 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, sess 
 		if req.Telegram.ClearToken {
 			set.Telegram.Token = ""
 		}
+		pass := set.Email.Pass
+		if req.Email.Pass != "" {
+			pass = req.Email.Pass
+		}
+		if req.Email.ClearPass || em.User == "" {
+			pass = ""
+		}
+		em.Pass = pass
+		set.Email = em
 		if req.NVDKey != nil {
 			set.NVDKey = strings.TrimSpace(*req.NVDKey)
 		}

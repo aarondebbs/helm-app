@@ -18,6 +18,7 @@ type Settings struct {
 		Token   string `json:"token"`
 		ChatID  string `json:"chatId"`
 	} `json:"telegram"`
+	Email          EmailSettings   `json:"email"`
 	NVDKey         string          `json:"nvdKey"`
 	OfflineMinutes int             `json:"offlineMinutes"`
 	DiskFreePct    int             `json:"diskFreePct"`
@@ -48,6 +49,7 @@ const (
 	RuleSecurity  = "security"
 	RulePatches   = "patches"
 	RuleSupport   = "support_request"
+	RuleReboot    = "reboot_pending"
 )
 
 var ruleInfo = []struct{ ID, Title, Desc string }{
@@ -56,6 +58,7 @@ var ruleInfo = []struct{ ID, Title, Desc string }{
 	{RuleNewDevice, "New PC waiting for approval", "A PC enrolled and is waiting for you to approve it."},
 	{RuleSecurity, "Critical or high security findings", "A scan found critical/high vulnerabilities or configuration problems."},
 	{RulePatches, "Security updates missing", "A scan found missing critical or important Windows updates."},
+	{RuleReboot, "Restart pending", "A PC has had a restart waiting (to finish installing updates) at its last scan."},
 	{RuleSupport, "Support requested", "The person at a PC pressed Request support in the Helm tray menu."},
 }
 

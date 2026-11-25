@@ -98,7 +98,10 @@ function renderInventory(m) {
 function tabOverview(body, dev, id) {
   const hello = dev.hello || {}, st = dev.stats;
   const inv = h('div', null, h('span', { class: 'spinner' }));
-  const showInv = (data, at) => clear(inv).append(h('p', { class: 'muted small-text' }, 'Collected ' + fmtAgo(at) + (dev.online ? '' : ' (PC offline; showing the last stored copy)') + '. Refreshed automatically every day.'), renderInventory(data || {}));
+  const showInv = (data, at) => clear(inv).append(h('p', { class: 'muted small-text' }, 'Collected ' + fmtAgo(at) + (dev.online ? '' : ' (PC offline; showing the last stored copy)') + '. Refreshed automatically every day.'),
+    data && data.pendingReboot ? h('div', { class: 'notice warn', style: { display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' } }, h('span', null, 'A restart is pending. Some updates are not active until this PC restarts.'),
+      dev.online ? actionButton('Restart in 1 minute', async () => { if (!(await confirmDialog(`Restart ${dev.name} in 1 minute? The person using it will see a warning.`, 'Restart', true))) return; await runCmd(id, 'power', { action: 'restart', delay: 60, message: 'Helm: restarting to finish installing updates' }, { wait: 30 }); toast('Restart scheduled', 'ok'); }, 'danger') : null) : null,
+    renderInventory(data || {}));
   api('GET', `/api/devices/${id}/inventory`).then(r => { if (r && r.data) showInv(r.data, r.at); else clear(inv).append(h('p', { class: 'muted' }, dev.online ? 'Not collected yet. It is gathered automatically, or press "Collect full inventory".' : 'No inventory stored yet. It is collected when the PC is online.')); }).catch(() => clear(inv).append(h('p', { class: 'muted' }, 'Could not load the stored inventory.')));
   const invBtn = actionButton('Collect full inventory', async () => {
     clear(inv).append(h('span', { class: 'spinner' }));
@@ -519,6 +522,28 @@ function tabScreen(body, dev, id) {
   canvas.addEventListener('mousedown', e => { canvas.focus(); e.preventDefault(); send(Object.assign({ t: 'md', b: e.button }, frac(e))); });
   canvas.addEventListener('mouseup', e => { e.preventDefault(); send(Object.assign({ t: 'mu', b: e.button }, frac(e))); });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
+  // Drop a file on the screen to send it to the PC.
+  const dropHint = h('div', { class: 'muted small-text' }, 'Tip: drag a file onto the screen to send it to this PC.');
+  canvas.addEventListener('dragover', e => { if (live && !vo.checked && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); canvas.style.outline = '2px dashed var(--accent)'; } });
+  canvas.addEventListener('dragleave', () => { canvas.style.outline = ''; });
+  canvas.addEventListener('drop', async e => {
+    canvas.style.outline = ''; e.preventDefault();
+    if (!live || vo.checked) { toast('Connect and turn off view-only to send files', 'bad'); return; }
+    const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (!f) return;
+    if (f.size > 512 * 1048576) { toast('That file is larger than 512 MB', 'bad'); return; }
+    const dir = h('input', { type: 'text', value: sessionStorage.getItem('helm.dropdir') || 'C:\\Users\\Public\\Desktop', style: { width: '100%' } });
+    const ok = await modal('Send file to ' + dev.name, h('div', { class: 'stack' }, h('p', null, f.name + ' (' + Math.ceil(f.size / 1024).toLocaleString() + ' KB)'), h('label', { class: 'field' }, h('span', null, 'Save in this folder on the PC'), dir)), [{ label: 'Cancel', value: false }, { label: 'Send file', value: true }]);
+    if (!ok) return;
+    try {
+      await ensureStepUp();
+      const folder = dir.value.trim().replace(/[\\/]+$/, ''); sessionStorage.setItem('helm.dropdir', folder);
+      const target = folder + '\\' + f.name;
+      let res = await fetch(`/api/devices/${id}/upload?path=${encodeURIComponent(target)}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': S.csrf }, body: f });
+      if (res.status === 409 && await confirmDialog(target + ' already exists. Overwrite?', 'Overwrite', true)) res = await fetch(`/api/devices/${id}/upload?path=${encodeURIComponent(target)}&overwrite=1`, { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': S.csrf }, body: f });
+      if (!res.ok) { let m = res.statusText; try { m = (await res.json()).error || m; } catch (x) { /* none */ } throw new Error(m); }
+      toast('Sent ' + f.name + ' to ' + folder, 'ok');
+    } catch (err) { toast(err.message || 'Upload failed', 'bad'); }
+  });
   canvas.addEventListener('wheel', e => { e.preventDefault(); send({ t: 'wh', dx: e.deltaX, dy: e.deltaY }); }, { passive: false });
   const key = t => e => { e.preventDefault(); send({ t, code: e.code, key: e.key, c: e.ctrlKey, a: e.altKey, m: e.metaKey }); };
   canvas.addEventListener('keydown', key('kd')); canvas.addEventListener('keyup', key('ku'));
@@ -528,7 +553,7 @@ function tabScreen(body, dev, id) {
       h('button', { class: 'small', onclick: () => send({ t: 'cad' }) }, 'Ctrl+Alt+Del'),
       h('button', { class: 'small', onclick: () => send({ t: 'refresh' }) }, 'Refresh'),
       h('button', { class: 'small', onclick: sendClip }, 'Send my clipboard'),
-      h('button', { class: 'small', onclick: () => send({ t: 'clipget' }) }, 'Get PC clipboard'),
+      h('button', { class: 'small', onclick: () => send({ t: 'clipget' }) }, 'Get PC clipboard'), dropHint,
       h('button', { class: 'small', onclick: () => { if (box.requestFullscreen) box.requestFullscreen(); } }, 'Full screen'), stats),
     status, box,
     h('p', { class: 'muted' }, 'Streams the PC\'s console session (including the sign-in screen). The frame rate and quality you pick are the most it will use; Helm measures how long each frame takes to reach you and lowers them by itself when the connection is slow, then raises them again when it recovers. Text and menus are sent exactly (lossless), pictures as JPEG, and anything that was sent softly sharpens a moment after it stops moving. Clipboard transfer is text only. For a full-speed session use an RDP tunnel from the Tools tab.')));

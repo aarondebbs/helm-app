@@ -427,6 +427,11 @@ async function viewSettings() {
   const rules = Object.assign({}, s.rules);
   const tgOn = toggle(s.telegram.enabled), token = h('input', { type: 'password', autocomplete: 'off', placeholder: s.telegram.tokenSet ? '•••••••• (saved; leave blank to keep)' : '123456:ABC-DEF…' });
   const chat = h('input', { type: 'text', placeholder: 'e.g. 123456789', value: s.telegram.chatId });
+  const em = s.email, emOn = toggle(em.enabled), emHost = h('input', { type: 'text', placeholder: 'smtp.example.com', value: em.host }), emPort = h('input', { type: 'number', min: 1, max: 65535, value: em.port }),
+    emSec = h('select', null, [['starttls', 'STARTTLS (port 587)'], ['tls', 'TLS (port 465)'], ['none', 'None (port 25, no password)']].map(([v, t]) => h('option', { value: v, selected: em.security === v }, t))),
+    emUser = h('input', { type: 'text', autocomplete: 'off', value: em.user }), emPass = h('input', { type: 'password', autocomplete: 'new-password', placeholder: em.passSet ? '•••••••• (saved; leave blank to keep)' : '' }),
+    emFrom = h('input', { type: 'text', placeholder: 'Helm <helm@example.com>', value: em.from }), emTo = h('input', { type: 'text', placeholder: 'you@example.com, helper@example.com', value: em.to });
+  emSec.onchange = () => { emPort.value = { starttls: 587, tls: 465, none: 25 }[emSec.value]; };
   const offline = h('input', { type: 'number', min: 0, max: 10080, value: s.offlineMinutes, style: { width: '7em' } });
   const disk = h('input', { type: 'number', min: 0, max: 90, value: s.diskFreePct, style: { width: '7em' } });
   const autoScan = toggle(s.autoScan), every_ = h('input', { type: 'number', min: 1, max: 720, value: s.scanEveryHours, style: { width: '7em' } });
@@ -483,6 +488,7 @@ async function viewSettings() {
   setTimeout(drawUpd, 0);
   const save = async (quiet) => {
     const body = { updateRepo: repo.value, manualAgentUpdates: !manualAgents.querySelector('input').checked, telegram: { enabled: tgOn.querySelector('input').checked, chatId: chat.value, token: token.value, clearToken: clearTok },
+      email: { enabled: emOn.querySelector('input').checked, host: emHost.value, port: Number(emPort.value), security: emSec.value, user: emUser.value, pass: emPass.value, from: emFrom.value, to: emTo.value },
       offlineMinutes: Number(offline.value), diskFreePct: Number(disk.value), autoScan: autoScan.querySelector('input').checked, scanEveryHours: Number(every_.value), rules };
     if (nvd.value || clearNvd) body.nvdKey = clearNvd ? '' : nvd.value;
     await api('PUT', '/api/settings', body); if (quiet === true) return; toast('Settings saved', 'ok'); viewSettings();
@@ -501,6 +507,15 @@ async function viewSettings() {
           h('label', { class: 'field' }, h('span', null, 'Chat ID'), chat, h('span', { class: 'hint' }, 'Send any message to your bot, then open https://api.telegram.org/bot<token>/getUpdates and copy the number after "chat":{"id":.')),
           h('div', { class: 'row' }, actionButton('Send test message', async () => { await save(); await api('POST', '/api/settings/telegram-test', {}); toast('Test message sent. Check Telegram.', 'ok'); }),
             s.telegram.tokenSet ? h('button', { class: 'danger', onclick: e => { clearTok = true; token.value = ''; token.placeholder = 'Token will be removed on save'; e.target.disabled = true; } }, 'Remove saved token') : null))),
+        panel('E-mail notifications', 'Send alerts to your inbox', null, h('div', { class: 'stack' },
+          h('div', { class: 'row spread' }, h('span', null, 'Send alerts by e-mail'), emOn),
+          h('div', { class: 'grid two' }, h('label', { class: 'field' }, h('span', null, 'SMTP server'), emHost), h('label', { class: 'field' }, h('span', null, 'Port'), emPort)),
+          h('label', { class: 'field' }, h('span', null, 'Security'), emSec),
+          h('div', { class: 'grid two' }, h('label', { class: 'field' }, h('span', null, 'User name (optional)'), emUser), h('label', { class: 'field' }, h('span', null, 'Password'), emPass)),
+          h('label', { class: 'field' }, h('span', null, 'Send from'), emFrom),
+          h('label', { class: 'field' }, h('span', null, 'Send to'), emTo, h('span', { class: 'hint' }, 'Separate several addresses with commas. A password is only ever sent over an encrypted connection.')),
+          h('div', { class: 'row' }, actionButton('Send test e-mail', async () => { await save(true); await api('POST', '/api/settings/email-test', {}); toast('Test e-mail sent. Check your inbox.', 'ok'); }),
+            em.passSet ? h('button', { class: 'danger', onclick: async e => { await api('PUT', '/api/settings', { ...{ email: { ...Object.fromEntries(Object.entries(em).filter(([k]) => k !== 'passSet')), clearPass: true } }, offlineMinutes: s.offlineMinutes, diskFreePct: s.diskFreePct, autoScan: s.autoScan, scanEveryHours: s.scanEveryHours, telegram: { enabled: s.telegram.enabled, chatId: s.telegram.chatId } }); toast('Saved password removed', 'ok'); viewSettings(); } }, 'Remove saved password') : null))),
         panel('Thresholds', null, null, h('div', { class: 'stack' },
           h('label', { class: 'field' }, h('span', null, 'Alert when a PC has been offline for (minutes, 0 = never)'), offline),
           h('label', { class: 'field' }, h('span', null, 'Alert when a drive has less free space than (percent, 0 = never)'), disk)))),

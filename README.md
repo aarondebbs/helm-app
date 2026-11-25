@@ -41,7 +41,7 @@ The script lists the releases with their dates and a line of the release log, yo
 4. asks you for an administrator password and prints the authenticator key to add to your app,
 5. starts the server on `http://127.0.0.1:8787`.
 
-Options: `-Version v0.11.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
+Options: `-Version v0.12.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
 (also opens the firewall) · `-Repo owner/name` (your own fork) · `-IncludePrerelease` · `-Uninstall` (`-PurgeData` deletes data too).
 Run it again any time to switch version; your data stays.
 
@@ -51,8 +51,8 @@ To publish it on the internet over HTTPS, install Tailscale on the server and ru
 
 ```bash
 sudo mkdir -p /opt/helm /var/lib/helm
-# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.11.0 and arm64/amd64 as needed)
-sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.11.0/helm-server-linux-arm64
+# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.12.0 and arm64/amd64 as needed)
+sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.12.0/helm-server-linux-arm64
 sudo chmod 0755 /opt/helm/helm-server && sudo ln -sf /opt/helm/helm-server /usr/local/bin/helm-server
 sudo curl -fL -o /etc/systemd/system/helm-server.service https://raw.githubusercontent.com/aarondebbs/helm-app/main/deploy/helm-server.service
 sudo useradd --system --home /var/lib/helm --shell /usr/sbin/nologin helm; sudo chown -R helm:helm /opt/helm /var/lib/helm
@@ -193,6 +193,15 @@ Only that one address can sign in. Sensitive changes still ask for the authentic
 Settings, Updates, Patch window installs pending updates by itself on online PCs: pick the days, start time and length,
 and whether to allow restarts or limit it to security updates. PCs are patched one at a time, at most once a day each,
 and results appear in the activity log. Times use the server's local time.
+
+## Alerts by e-mail and Telegram
+
+Settings → Alerts and notifications has an **E-mail** panel next to Telegram. Enter your SMTP server (STARTTLS on 587 or
+TLS on 465; plain port 25 works only without a password), a From address and up to 10 recipients, then press *Send test
+e-mail*. Passwords are only sent over an encrypted connection. A new **Restart pending** rule raises an alert when a PC is
+waiting for a restart, and the PC's Overview shows a banner with a *Restart in 1 minute* button.
+
+On the Remote screen tab you can drag a file onto the picture to send it to the PC (default: the shared Public Desktop).
 
 ## Updates on each operating system
 

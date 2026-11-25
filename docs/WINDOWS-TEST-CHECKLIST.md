@@ -108,3 +108,8 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] An open old browser tab (before upgrading the server) still shows the screen.
 - [ ] Taskbar menu has no *Open Helm portal*.
 - [ ] Updates tab on Windows shows Windows Update and Apps (winget); on Linux only System updates.
+
+## 0.12.0
+
+- [ ] Drag a file onto the remote screen: it appears in the chosen folder on the PC; a second drop of the same name asks before overwriting.
+- [ ] A PC with a pending restart shows the banner on Overview and a *Restart pending* alert.
