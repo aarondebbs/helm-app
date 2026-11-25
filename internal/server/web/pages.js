@@ -9,6 +9,51 @@ function cveNotice(cve) {
   return null;
 }
 
+// ---------- Appearance and branding ----------
+function appearancePanel() {
+  const look = helmLook();
+  const seg = (items, cur, on) => { const wrap = h('div', { class: 'seg', role: 'radiogroup' }); items.forEach(([v, l]) => { const b = h('button', { type: 'button', role: 'radio', 'aria-checked': String(v === cur), class: v === cur ? 'on' : '', onclick: () => { on(v); [...wrap.children].forEach(c => { const o = c.dataset.v === v; c.classList.toggle('on', o); c.setAttribute('aria-checked', String(o)); }); } }, l); b.dataset.v = v; wrap.append(b); }); return wrap; };
+  const sw = h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Accent colour' }, Object.entries(HELM_ACCENTS).map(([k, a]) => {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const b = h('button', { type: 'button', role: 'radio', 'aria-checked': String(k === look.accent), 'aria-label': a.name, title: a.name, class: 'swatch' + (k === look.accent ? ' on' : ''), style: { '--sw': a[dark ? 'd' : 'l'][0] },
+      onclick: () => { setLook({ accent: k }); [...sw.children].forEach(c => { c.classList.toggle('on', c === b); c.setAttribute('aria-checked', String(c === b)); }); } });
+    return b;
+  }));
+  return panel('Appearance', 'Saved in this browser only', null, h('div', { class: 'stack', style: { gap: '18px' } },
+    h('div', { class: 'field' }, h('span', null, 'Mode'), seg([['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], look.mode, v => setTheme(v))),
+    h('div', { class: 'field' }, h('span', null, 'Accent colour'), sw),
+    h('div', { class: 'field' }, h('span', null, 'Density'), seg([['comfortable', 'Comfortable'], ['compact', 'Compact']], look.density, v => setLook({ density: v })), h('span', { class: 'hint' }, 'Compact fits more PCs on a screen.'))));
+}
+
+function brandPanel() {
+  const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
+  (async () => {
+    let info; try { info = await api('GET', '/api/info'); } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
+    let logo = null, remove = false; // logo: a new data URL
+    const name = h('input', { type: 'text', maxLength: 40, value: (info.brand && info.brand.name) || '', placeholder: 'e.g. Acme IT' });
+    const file = h('input', { type: 'file', accept: 'image/png' });
+    const cur = h('img', { class: 'brandprev' + (info.brand && info.brand.logo ? '' : ' hidden'), alt: 'Current logo', src: '/api/brand/logo?x=' + Date.now() });
+    file.addEventListener('change', () => {
+      const f = file.files[0]; if (!f) return;
+      if (f.type !== 'image/png' || f.size > 64 * 1024) { toast('Use a PNG of at most 64 KB', 'bad'); file.value = ''; return; }
+      const rd = new FileReader(); rd.onload = () => { logo = String(rd.result); remove = false; cur.src = logo; cur.classList.remove('hidden'); }; rd.readAsDataURL(f);
+    });
+    clear(box).append(
+      h('p', { class: 'muted small-text', style: { margin: 0 } }, 'Shown on the sign-in page and at the top of the menu for everyone who uses this console.'),
+      h('label', { class: 'field' }, h('span', null, 'Name'), name),
+      h('label', { class: 'field' }, h('span', null, 'Logo (PNG, up to 64 KB, a square or wide image on a transparent background works best)'), h('span', { class: 'row' }, file, cur)),
+      h('div', { class: 'row' },
+        actionButton('Save branding', async () => {
+          const keep = info.brand && info.brand.logo && !logo && !remove;
+          let body = { name: name.value.trim(), logo: logo || '' };
+          if (keep) { const r = await fetch('/api/brand/logo'); const b = await r.blob(); body.logo = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(String(rd.result)); rd.readAsDataURL(b); }); }
+          const r = await api('PUT', '/api/brand', body); S.brand = r; toast('Branding saved', 'ok'); paintBrand();
+        }, 'primary'),
+        info.brand && info.brand.logo ? h('button', { type: 'button', onclick: async () => { await api('PUT', '/api/brand', { name: name.value.trim(), logo: '' }); S.brand = { name: name.value.trim(), logo: false }; cur.classList.add('hidden'); toast('Logo removed', 'ok'); paintBrand(); } }, 'Remove logo') : null));
+  })();
+  return panel('Branding', 'Your name and logo in the console', null, box);
+}
+
 // ---------- Google sign-in ----------
 function googlePanel() {
   const box = h('div', { class: 'stack' }, h('span', { class: 'spinner' }));
@@ -456,9 +501,11 @@ async function viewSettings() {
     const grid = host.firstChild, by = {};
     grid.querySelectorAll('.panel').forEach(p => { const t = p.querySelector('h3'); if (t) by[t.textContent] = p; });
     by['Google sign-in'] = googlePanel();
+    by['Appearance'] = appearancePanel();
+    if (S.role !== 'viewer') by['Branding'] = brandPanel();
     by['Patch window'] = patchWindowPanel();
     const groups = [['updates', 'Updates', ['Updates', 'Patch window']], ['alerts', 'Alerts and notifications', ['Alert rules', 'Thresholds', 'Telegram notifications']],
-      ['scanning', 'Scanning', ['Vulnerability scanning']], ['signin', 'Sign-in', ['Google sign-in']], ['backups', 'Backups and health', ['Backups and health']]];
+      ['scanning', 'Scanning', ['Vulnerability scanning']], ['signin', 'Sign-in', ['Google sign-in']], ['look', 'Appearance', ['Appearance', 'Branding']], ['backups', 'Backups and health', ['Backups and health']]];
     let cur = store.get('settab', 'updates'); if (!groups.some(g => g[0] === cur)) cur = 'updates';
     const saveRow = host.lastChild, tabsEl = h('div', { class: 'tabs' }), panes = {};
     const show = k => { cur = k; store.set('settab', k); groups.forEach(([id]) => { panes[id].classList.toggle('hidden', id !== k); }); [...tabsEl.children].forEach((a, n) => a.classList.toggle('active', groups[n][0] === k)); saveRow.classList.toggle('hidden', k === 'backups' || k === 'signin'); };

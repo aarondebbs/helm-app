@@ -230,7 +230,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request, sess *sessio
 		}
 	}
 	writeJSON(w, 200, map[string]any{"version": s.cfg.Version, "baseUrl": s.baseURL(r), "msi": msiErr == nil, "installer": tplErr == nil,
-		"releases": s.listReleases(), "dist": dist})
+		"releases": s.listReleases(), "dist": dist, "brand": map[string]any{"name": s.db.settings().Brand.Name, "logo": s.db.settings().Brand.Logo != ""}})
 }
 
 // ---- devices ----
@@ -826,7 +826,8 @@ func parseVer(v string) [3]int {
 // handleAuthConfig tells the login page whether to ask for an authenticator code.
 func (s *Server) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
 	adm := s.st.admin()
-	writeJSON(w, 200, map[string]bool{"totp": adm == nil || adm.TOTPSecret != "", "google": s.googleOn()})
+	b := s.db.settings().Brand
+	writeJSON(w, 200, map[string]any{"totp": adm == nil || adm.TOTPSecret != "", "google": s.googleOn(), "brand": map[string]any{"name": b.Name, "logo": b.Logo != ""}})
 }
 
 // acctKey names the rate-limit bucket of a sign-in attempt: one per real user, so one person's mistakes (or an

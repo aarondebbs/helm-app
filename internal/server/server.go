@@ -202,6 +202,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/account/2fa/confirm", s.authed(s.handle2faConfirm, true))
 	mux.HandleFunc("POST /api/account/2fa/disable", s.authed(s.handle2faDisable, true))
 	mux.HandleFunc("GET /api/auth/config", s.handleAuthConfig)
+	mux.HandleFunc("GET /api/brand/logo", s.handleBrandLogo)
+	mux.HandleFunc("PUT /api/brand", s.authed(s.handleBrandPut, true))
 	mux.HandleFunc("GET /api/update", s.authed(s.handleUpdateGet, false))
 	mux.HandleFunc("GET /api/update/releases", s.authed(s.handleUpdateReleases, false))
 	mux.HandleFunc("POST /api/update/check", s.authed(s.handleUpdateCheck, false))

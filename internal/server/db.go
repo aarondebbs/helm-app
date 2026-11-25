@@ -19,6 +19,7 @@ type Settings struct {
 		ChatID  string `json:"chatId"`
 	} `json:"telegram"`
 	Email          EmailSettings   `json:"email"`
+	Brand          Brand           `json:"brand"`
 	NVDKey         string          `json:"nvdKey"`
 	OfflineMinutes int             `json:"offlineMinutes"`
 	DiskFreePct    int             `json:"diskFreePct"`

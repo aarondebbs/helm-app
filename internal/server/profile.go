@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -36,15 +35,8 @@ func cleanProfile(p *Profile) (*Profile, error) {
 	if c.Accent != "" && !reAccent.MatchString(c.Accent) {
 		return nil, errors.New("the brand colour must look like #0d7a70")
 	}
-	if c.Logo != "" {
-		raw, ok := strings.CutPrefix(c.Logo, logoPrefix)
-		if !ok || len(c.Logo) > 90000 {
-			return nil, errors.New("the logo must be a PNG of at most 64 KB")
-		}
-		b, err := base64.StdEncoding.DecodeString(raw)
-		if err != nil || len(b) < 8 || string(b[:8]) != "\x89PNG\r\n\x1a\n" {
-			return nil, errors.New("the logo must be a PNG of at most 64 KB")
-		}
+	if err := checkPNGLogo(c.Logo); err != nil {
+		return nil, err
 	}
 	var tags []string
 	for _, t := range c.Tags {

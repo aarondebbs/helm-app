@@ -1,6 +1,10 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '0.15.0', title: 'Make the console yours', new: [
+    'Settings, Appearance: choose light, dark or follow the system, pick an accent colour from six tested palettes, and switch between comfortable and compact density.',
+    'Settings, Branding: your own name and logo on the sign-in page and at the top of the menu.'],
+    better: ['The console starts after all its scripts have loaded, which avoids a rare blank first screen.'], fixed: [] },
   { v: '0.14.0', date: '2026-11-25', title: 'A new sign-in, a rebuilt PC list, branded installers', new: [
     'Sign in with Google from a clean, centred sign-in page.',
     'The PC list is rebuilt: rows or cards, live CPU and memory that move smoothly, filter chips, grouping and bulk actions.',

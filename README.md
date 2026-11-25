@@ -41,7 +41,7 @@ The script lists the releases with their dates and a line of the release log, yo
 4. asks you for an administrator password and prints the authenticator key to add to your app,
 5. starts the server on `http://127.0.0.1:8787`.
 
-Options: `-Version v0.14.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
+Options: `-Version v0.15.0` (exact version) · `-Version latest` · `-List` (just show versions) · `-Listen 0.0.0.0:8787`
 (also opens the firewall) · `-Repo owner/name` (your own fork) · `-IncludePrerelease` · `-Uninstall` (`-PurgeData` deletes data too).
 Run it again any time to switch version; your data stays.
 
@@ -51,8 +51,8 @@ To publish it on the internet over HTTPS, install Tailscale on the server and ru
 
 ```bash
 sudo mkdir -p /opt/helm /var/lib/helm
-# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.14.0 and arm64/amd64 as needed)
-sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.14.0/helm-server-linux-arm64
+# pick a version: https://github.com/aarondebbs/helm-app/releases  (replace v0.15.0 and arm64/amd64 as needed)
+sudo curl -fL -o /opt/helm/helm-server https://github.com/aarondebbs/helm-app/releases/download/v0.15.0/helm-server-linux-arm64
 sudo chmod 0755 /opt/helm/helm-server && sudo ln -sf /opt/helm/helm-server /usr/local/bin/helm-server
 sudo curl -fL -o /etc/systemd/system/helm-server.service https://raw.githubusercontent.com/aarondebbs/helm-app/main/deploy/helm-server.service
 sudo useradd --system --home /var/lib/helm --shell /usr/sbin/nologin helm; sudo chown -R helm:helm /opt/helm /var/lib/helm
@@ -358,3 +358,8 @@ Run Helm behind Tailscale ACLs or an allow-list where you can, and keep admin ac
 - **PC list:** rows or cards, live CPU and memory, group-by, filter chips and bulk actions. Each PC shows a picture of its kind (Raspberry Pi, laptop, desktop, server, virtual machine), detected by the agent from the hardware it runs on. PCs pick up their picture when the agent is updated.
 - **Installer branding:** upload a PNG logo (up to 64 KB) and a brand colour when you create an install token. They appear in the chat window on the PC; the preview in the form shows how. The Windows setup itself stays silent.
 - Security scans already run on every PC automatically (Settings, every 24 hours by default).
+
+## 0.15.0
+
+- **Appearance** (Settings, Appearance): mode (system, light, dark), accent colour (six palettes checked for contrast in both modes) and density. These are saved in the browser, so each person sees their own.
+- **Branding** (Settings, Appearance): a name and a PNG logo (up to 64 KB) shown on the sign-in page and in the menu for everyone. Viewers cannot change it.

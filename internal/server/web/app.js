@@ -365,13 +365,22 @@ const tagNodes = tags => (tags || []).map(t => h('span', { class: 'tag' }, t));
 
 // ---------- theme (light / dark) ----------
 const currentTheme = () => document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-function setTheme(t) { document.documentElement.setAttribute('data-theme', t); store.set('theme', t); }
+function setTheme(t) { store.set('theme', t); helmApplyLook(); }
+function setLook(patch) { store.set('look', Object.assign({}, store.get('look', {}), patch)); helmApplyLook(); }
 function themeButton() {
   const b = h('button', { class: 'iconbtn', type: 'button' });
   const draw = () => { clear(b).append(icon(currentTheme() === 'dark' ? 'sun' : 'moon')); b.title = currentTheme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'; b.setAttribute('aria-label', b.title); };
   b.addEventListener('click', () => { setTheme(currentTheme() === 'dark' ? 'light' : 'dark'); draw(); });
   draw(); return b;
 }
+
+// The console's own logo and name (Settings, Appearance). Falls back to the Helm mark.
+function brandMark() {
+  const b = S.brand || {};
+  const mark = b.logo ? h('img', { class: 'brandimg', src: '/api/brand/logo?x=' + (S.brandRev || 0), alt: '' }) : LOGO();
+  return [mark, h('span', null, b.name || 'Helm')];
+}
+function paintBrand() { S.brandRev = Date.now(); document.querySelectorAll('.sidebar .brand').forEach(n => { clear(n).append(...brandMark()); }); }
 
 // ---------- layout ----------
 const LOGO = () => {
@@ -452,7 +461,7 @@ function shell(active, content) {
   badges.alerts = []; badges.chat = [];
   const badge = key => { const b = h('span', { class: 'count hidden' }); badges[key].push(b); return b; };
   const side = h('aside', { class: 'sidebar', id: 'sidebar' },
-    h('div', { class: 'brand' }, LOGO(), h('span', null, 'Helm')),
+    h('div', { class: 'brand' }, ...brandMark()),
     NAV.map(([group, links]) => [h('div', { class: 'navgroup' }, group), links.map(([href, label, ic, key]) => {
       const a = h('a', { href, class: 'navlink' + (active === key ? ' active' : ''), onclick: () => side.classList.remove('open') }, icon(ic), label);
       if (key === 'alerts' || key === 'inbox') a.append(badge(key === 'alerts' ? 'alerts' : 'chat'));
@@ -576,6 +585,7 @@ function showLogin(msg) {
   const orline = h('div', { class: 'orline hidden' }, h('span', null, 'or'));
   fetch('/api/auth/config').then(r => r.json()).then(c => {
     if (c && c.totp === false) { codeField.classList.add('hidden'); code.required = false; }
+    if (c && c.brand && (c.brand.name || c.brand.logo)) { const bb = $('.loginbrand'); if (bb) { clear(bb); S.brand = c.brand; bb.append(...brandMark()); } }
     if (c && c.google) { gbox.append(h('a', { class: 'gbtn', href: '/api/auth/google/start' }, GLOGO(), h('span', null, 'Continue with Google'))); gbox.classList.remove('hidden'); orline.classList.remove('hidden'); }
   }).catch(() => { /* password sign-in still works */ });
   const ssoErr = new URLSearchParams(location.search).get('sso_error');
@@ -647,7 +657,8 @@ async function boot() {
 }
 function boot2() {
   navigate();
-  if (!S.version) api('GET', '/api/info').then(i => { S.version = i.version || ''; const v = $('#ver'); if (v && S.version) { v.textContent = 'v' + S.version; if (unseenVersion()) v.append(h('i', { id: 'verdot', class: 'verdot' })); } maybeShowWhatsNew(); }).catch(() => { /* optional */ });
+  if (!S.version) api('GET', '/api/info').then(i => { S.version = i.version || ''; const v = $('#ver'); if (i.brand) { S.brand = i.brand; paintBrand(); }
+    if (v && S.version) { v.textContent = 'v' + S.version; if (unseenVersion()) v.append(h('i', { id: 'verdot', class: 'verdot' })); } maybeShowWhatsNew(); }).catch(() => { /* optional */ });
 }
 window.addEventListener('hashchange', () => { if (S.csrf) navigate(); });
 setInterval(() => { if (S.csrf) refreshAlertCount(); }, 30000);
