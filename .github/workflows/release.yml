@@ -41,7 +41,7 @@ jobs:
     if: needs.check.outputs.skip != 'true'
     # GitHub's macOS machines are sometimes all busy. Do not let that block the release: it goes out without the .pkg files.
     continue-on-error: true
-    timeout-minutes: 25
+    timeout-minutes: 15
     # The .pkg can only be built with Apple's pkgbuild, so a macOS runner does it.
     runs-on: macos-latest
     steps:
@@ -68,6 +68,8 @@ jobs:
         with: { name: macos-pkg, path: extra/*.pkg }
   build:
     needs: [check, macos-pkg]
+    # Runs even when the macOS job is cancelled or never got a machine, so a release is never held up by it.
+    if: ${{ always() && needs.check.result == 'success' && needs.check.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
