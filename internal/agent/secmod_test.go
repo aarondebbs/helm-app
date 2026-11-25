@@ -1,6 +1,14 @@
 package agent
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
 
 func TestEDRFlags(t *testing.T) {
 	cases := []struct {
@@ -35,5 +43,33 @@ func TestSecHandlersRegistered(t *testing.T) {
 		if _, ok := a.handlers()[n]; !ok {
 			t.Errorf("agent has no handler for %s", n)
 		}
+	}
+}
+
+// A stand-in clamscan that prints one line per file shows that progress, counting and findings work.
+func TestClamScanProgress(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip()
+	}
+	dir := t.TempDir()
+	data := filepath.Join(dir, "data")
+	_ = os.MkdirAll(data, 0o755)
+	for i := 0; i < 5; i++ {
+		_ = os.WriteFile(filepath.Join(data, fmt.Sprintf("f%d", i)), []byte("x"), 0o644)
+	}
+	bin := filepath.Join(dir, "bin")
+	_ = os.MkdirAll(bin, 0o755)
+	script := "#!/bin/sh\nfor f in \"$@\"; do :; done\nfor i in 0 1 2 3 4; do echo \"$DATA/f$i: OK\"; done\necho \"$DATA/f4: Eicar-Test FOUND\"\nexit 1\n"
+	_ = os.WriteFile(filepath.Join(bin, "clamscan"), []byte(script), 0o755)
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	t.Setenv("DATA", data)
+	var last string
+	c := &cmdCtx{progress: func(s string) { last = s }, pct: func(p int, s string) { last = s }}
+	found, err := clamScan(context.Background(), c, []string{"-r"}, []string{data}, false)
+	if err != nil || len(found) != 1 || !strings.Contains(found[0], "Eicar") {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if last == "" {
+		t.Error("no progress was reported")
 	}
 }

@@ -50,6 +50,8 @@ var jobTasks = map[string]string{
 	"winget.uninstall": "Remove program", "pkg.install": "Install package", "fix.apply": "Apply fix",
 	"exec": "Run script", "power": "Power action", "agent.update": "Update Helm agent",
 	"net.scan": "Network scan", "agent.push": "Install Helm on a PC",
+	"av.scan": "Antivirus scan", "av.update": "Update antivirus intelligence", "module.install": "Set up PC components",
+	"wol.configure": "Set up Wake-on-LAN", "edr.isolate": "Isolate PC from the network",
 }
 
 func jobTitle(name string, args json.RawMessage) string {
@@ -60,9 +62,18 @@ func jobTitle(name string, args json.RawMessage) string {
 		All      bool     `json:"all"`
 		Action   string   `json:"action"`
 		Filename string   `json:"filename"`
+		Kind     string   `json:"kind"`
 	}
 	_ = json.Unmarshal(args, &a)
 	switch name {
+	case "av.scan":
+		switch a.Kind {
+		case "full":
+			return "Antivirus scan (full)"
+		case "path":
+			return "Antivirus scan (one folder)"
+		}
+		return "Antivirus scan (quick)"
 	case "updates.install":
 		if len(a.IDs) > 0 {
 			return t + " (" + plural(len(a.IDs), "update") + ")"

@@ -206,7 +206,7 @@ async function tabAntivirus(body, dev, id) {
     clear(box).append(
       h('div', { class: 'panel stack' }, h('div', { class: 'row spread' }, h('h3', { style: { margin: 0 } }, 'Protection'), h('span', { class: 'chip ' + chip[0] }, chip[1])),
         h('dl', { class: 'kv' }, h('dt', null, 'Engine'), h('dd', null, sigLine),
-          h('dt', null, 'Real-time protection'), h('dd', null, row.enabled ? (row.realtime ? 'On' : 'Off') : 'Not available'),
+          h('dt', null, 'Real-time protection'), h('dd', null, row.enabled ? (row.realtime ? 'On' : 'Off') : 'Not available', !row.realtime && row.enabled ? h('span', { class: 'muted' }, /clam/i.test(row.engine || '') ? '  ClamAV only scans when asked. Run a scan, or ask for real-time protection to be added.' : '  Helm turns it back on at every update. If it stays off, Windows or another security product is blocking it.') : null),
           h('dt', null, 'Intelligence updated'), h('dd', null, row.updatedAt && row.updatedAt.indexOf('0001') !== 0 ? fmtAgo(row.updatedAt) + ' (Helm updates it every day)' : 'Not yet'),
           row.hint ? [h('dt', null, 'Note'), h('dd', null, row.hint)] : null),
         row.err ? h('div', { class: 'notice bad' }, row.err) : null,

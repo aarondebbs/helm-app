@@ -1,6 +1,12 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.7', date: '2026-11-25', title: 'Scan progress, antivirus update fix, real-time protection', new: [
+    'Antivirus scans, intelligence updates and component setup now appear under Running now in Activity. ClamAV scans show files scanned, a percentage and the current folder. Microsoft Defender does not report a percentage, so Helm shows how long the scan has run.',
+    'On Windows Helm switches Defender real-time protection back on at every intelligence update and when a plan is set up, and says so plainly when Windows will not allow it.',
+  ], fixed: [
+    'Update intelligence on Linux no longer fails with Problem with internal logger or a locked freshclam.log.',
+  ] },
   { v: '1.0.6', date: '2026-11-25', title: 'The agent turns on Wake-on-LAN', new: [
     'The agent now turns on Wake-on-LAN on the PC\'s network card when a PC is set up, and from Plan & modules → Set up this PC. Windows: card power settings, and Fast Startup is turned off so a shut-down PC can still wake. Linux: ethtool plus a saved setting. Mac: pmset. Wi-Fi cards are left alone.',
   ] },

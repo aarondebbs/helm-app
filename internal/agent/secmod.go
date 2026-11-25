@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -108,8 +110,25 @@ func (a *Agent) cmdAVScan(ctx context.Context, c *cmdCtx) (any, error) {
 		} else if kind == "" {
 			return nil, errors.New("unknown scan kind")
 		}
-		c.progress("Scanning with Microsoft Defender")
-		if out, err := secPS(ctx, 4*time.Hour, script); err != nil {
+		c.progress("Starting the Microsoft Defender " + args.Kind + " scan")
+		// Defender does not report a percentage, so show how long the scan has run and what it is.
+		started := time.Now()
+		done := make(chan struct{})
+		var out string
+		var serr error
+		go func() { out, serr = secPS(ctx, 4*time.Hour, script); close(done) }()
+		tick := time.NewTicker(4 * time.Second)
+		defer tick.Stop()
+	wait:
+		for {
+			select {
+			case <-done:
+				break wait
+			case <-tick.C:
+				c.progress(fmt.Sprintf("Microsoft Defender is scanning (%s so far). It does not report a percentage.", time.Since(started).Round(time.Second)))
+			}
+		}
+		if serr != nil {
 			return nil, errors.New(firstLines(out, 300))
 		}
 		th, _ := secPS(ctx, 60*time.Second, `@(Get-MpThreatDetection | Sort-Object InitialDetectionTime -Descending | Select-Object -First 20 ThreatID,ProcessName,Resources,InitialDetectionTime,ActionSuccess) | ConvertTo-Json -Compress`)
@@ -119,7 +138,7 @@ func (a *Agent) cmdAVScan(ctx context.Context, c *cmdCtx) (any, error) {
 			return nil, errors.New("ClamAV is not installed on this machine (apt install clamav / brew install clamav)")
 		}
 		targets := []string{"/home", "/tmp", "/var/tmp", "/root"}
-		cargs := []string{"-r", "--infected", "--no-summary"}
+		cargs := []string{"-r", "--no-summary"}
 		switch args.Kind {
 		case "full":
 			targets = []string{"/"}
@@ -137,16 +156,9 @@ func (a *Agent) cmdAVScan(ctx context.Context, c *cmdCtx) (any, error) {
 		default:
 			return nil, errors.New("unknown scan kind")
 		}
-		c.progress("Scanning with ClamAV")
-		out, err := secRun(ctx, 4*time.Hour, "clamscan", append(cargs, targets...)...)
-		var found []string
-		for _, l := range strings.Split(out, "\n") {
-			if strings.HasSuffix(strings.TrimSpace(l), "FOUND") {
-				found = append(found, strings.TrimSpace(l))
-			}
-		}
-		if err != nil && len(found) == 0 && !strings.Contains(err.Error(), "exit status 1") {
-			return nil, errors.New(firstLines(out, 300))
+		found, err := clamScan(ctx, c, cargs, targets, args.Kind == "full")
+		if err != nil && len(found) == 0 {
+			return nil, err
 		}
 		return map[string]any{"engine": "ClamAV", "kind": args.Kind, "done": true, "infected": found}, nil
 	}
@@ -164,16 +176,16 @@ func nonEmptyJSON(s string) string {
 func (a *Agent) cmdAVUpdate(ctx context.Context, c *cmdCtx) (any, error) {
 	switch runtime.GOOS {
 	case "windows":
+		rt, note := ensureDefenderRealtime(ctx)
 		if out, err := secPS(ctx, 20*time.Minute, "Update-MpSignature"); err != nil {
 			return nil, errors.New(firstLines(out, 300))
 		}
-		return map[string]any{"updated": true}, nil
+		return map[string]any{"updated": true, "realtime": rt, "realtimeNote": note}, nil
 	case "linux":
 		if !haveBin("freshclam") {
 			return nil, errors.New("freshclam (ClamAV) is not installed")
 		}
-		out, err := secRun(ctx, 20*time.Minute, "freshclam")
-		if err != nil {
+		if out, err := runFreshclam(ctx); err != nil {
 			return nil, errors.New(firstLines(out, 300))
 		}
 		return map[string]any{"updated": true}, nil
@@ -684,8 +696,12 @@ func (a *Agent) installAV(ctx context.Context, c *cmdCtx, r *compResult, step fu
 		switch st := strings.TrimSpace(out); st {
 		case "running", "started":
 			step("Microsoft Defender is present (" + st + ")")
-			_, _ = secPS(ctx, time.Minute, `Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction SilentlyContinue`)
-			step("Real-time protection switched on")
+			if rt, note := ensureDefenderRealtime(ctx); rt {
+				step("Real-time protection is on")
+			} else {
+				step("Real-time protection is OFF: " + note)
+				r.Note = note
+			}
 			return true
 		case "missing":
 			if o, err := secPS(ctx, 20*time.Minute, `if(Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue){Install-WindowsFeature -Name Windows-Defender | Out-String}else{throw 'not a Windows Server system'}`); err == nil {
@@ -712,7 +728,7 @@ func (a *Agent) installAV(ctx context.Context, c *cmdCtx, r *compResult, step fu
 			_, _ = secRun(ctx, 30*time.Second, "systemctl", "stop", "clamav-freshclam")
 		}
 		c.progress("Downloading the first threat definitions")
-		if out, err := secRun(ctx, 20*time.Minute, "freshclam"); err != nil {
+		if out, err := runFreshclam(ctx); err != nil {
 			r.Note = "ClamAV is installed but the first definition download failed: " + firstLines(out, 200)
 			return false
 		}
@@ -834,4 +850,121 @@ $o -join [string][char]10`)
 		}
 	}
 	return steps, ok
+}
+
+// runFreshclam updates ClamAV's definitions. It does not use freshclam's own log file: when that file is owned by
+// another user, freshclam stops with "Problem with internal logger". If ClamAV's updater service is holding the
+// lock, the service is paused for the update and started again.
+func runFreshclam(ctx context.Context) (string, error) {
+	run := func() (string, error) {
+		return secRun(ctx, 20*time.Minute, "freshclam", "--stdout", "--log=/dev/null")
+	}
+	out, err := run()
+	if err != nil && (strings.Contains(out, "lock") || strings.Contains(out, "already running") || strings.Contains(out, "Another process")) && haveBin("systemctl") {
+		_, _ = secRun(ctx, 30*time.Second, "systemctl", "stop", "clamav-freshclam")
+		out, err = run()
+		_, _ = secRun(ctx, 30*time.Second, "systemctl", "start", "clamav-freshclam")
+	}
+	return out, err
+}
+
+// ensureDefenderRealtime switches Defender's real-time protection back on if it is off, and says whether it is on.
+// Tamper protection or another security product can refuse the change; the note then says so.
+func ensureDefenderRealtime(ctx context.Context) (bool, string) {
+	out, _ := secPS(ctx, 90*time.Second, `try{Set-MpPreference -DisableRealtimeMonitoring $false -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableScriptScanning $false -ErrorAction Stop}catch{}
+$s=Get-MpComputerStatus -ErrorAction SilentlyContinue
+if($s -and $s.RealTimeProtectionEnabled){'on'}elseif($s){'off'}else{'unknown'}`)
+	switch strings.TrimSpace(out) {
+	case "on":
+		return true, ""
+	case "off":
+		return false, "Real-time protection is off and Windows will not let Helm turn it on. Tamper protection or another security product is probably in control."
+	}
+	return false, "Could not read Defender's state"
+}
+
+// clamScan runs clamscan and reports progress as it goes: files scanned, the current folder and, when the files could
+// be counted first, a percentage. Counting is skipped (no percentage) if it takes more than 90 seconds.
+func clamScan(ctx context.Context, c *cmdCtx, cargs, targets []string, full bool) ([]string, error) {
+	c.progress("Counting the files to scan")
+	total := countFiles(ctx, targets, 90*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Hour)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "clamscan", append(cargs, targets...)...)
+	hideWindow(cmd)
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	var found []string
+	n, last := 0, time.Time{}
+	sc := bufio.NewScanner(pipe)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		l := strings.TrimSpace(sc.Text())
+		if strings.HasSuffix(l, "FOUND") {
+			found = append(found, l)
+		}
+		n++
+		if time.Since(last) < time.Second {
+			continue
+		}
+		last = time.Now()
+		dir := filepath.Dir(strings.SplitN(l, ": ", 2)[0])
+		msg := fmt.Sprintf("Scanned %d files", n)
+		if total > 0 {
+			msg = fmt.Sprintf("Scanned %d of about %d files", n, total)
+		}
+		if len(found) > 0 {
+			msg += fmt.Sprintf(", %d threat(s) found", len(found))
+		}
+		msg += " · " + dir
+		if total > 0 {
+			p := n * 100 / total
+			if p > 99 {
+				p = 99
+			}
+			c.pct(p, msg)
+		} else {
+			c.progress(msg)
+		}
+	}
+	werr := cmd.Wait()
+	if werr != nil && !strings.Contains(werr.Error(), "exit status 1") && len(found) == 0 {
+		return found, werr
+	}
+	return found, nil
+}
+
+// countFiles counts regular files under the targets, giving up (0) when it takes longer than the limit.
+func countFiles(ctx context.Context, targets []string, limit time.Duration) int {
+	deadline := time.Now().Add(limit)
+	n := 0
+	skip := map[string]bool{"/proc": true, "/sys": true, "/dev": true, "/run": true}
+	for _, t := range targets {
+		stop := false
+		_ = filepath.WalkDir(t, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if time.Now().After(deadline) || ctx.Err() != nil {
+				stop = true
+				return filepath.SkipAll
+			}
+			if d.IsDir() && skip[p] {
+				return filepath.SkipDir
+			}
+			if d.Type().IsRegular() {
+				n++
+			}
+			return nil
+		})
+		if stop {
+			return 0
+		}
+	}
+	return n
 }
