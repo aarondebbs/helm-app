@@ -1,6 +1,12 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.14', date: '2026-11-25', title: 'Remote screen on macOS', new: [
+    'Remote screen now works on Macs, in the browser like on Windows: view and control the Mac, with the same quality and speed settings. The person at the Mac is asked to allow it unless the PC is set to unattended.',
+    'Each Mac has to allow Helm once under System Settings, Privacy & Security: Screen Recording to see the screen and Accessibility to use the mouse and keyboard. If one is missing, the session says which. The remote screen comes with the .pkg installer, not the script installer.',
+  ], better: [
+    'The Remote screen button now shows on Macs too.',
+  ] },
   { v: '1.0.13', date: '2026-11-25', title: 'Mac installer, menu-bar icon, scans without ClamAV', new: [
     'A Helm icon in the Mac menu bar (at the top of the screen) shows whether the Mac is connected, and offers Chat with support, Request support and About. It comes with the .pkg installer.',
     'Antivirus scans now work on Macs without ClamAV. Helm checks every app and installer with Gatekeeper and XProtect and lists anything Apple rejects. A rejection is something to look at, not proof of malware.',

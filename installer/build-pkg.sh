@@ -17,6 +17,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 APP="$ROOT/Library/Application Support/Helm/HelmMenu.app"
 mkdir -p "$APP/Contents/MacOS" "$ROOT/Library/LaunchAgents"
 if swiftc -O -o "$APP/Contents/MacOS/HelmMenu" "$HERE/macos/HelmMenu.swift" 2>/tmp/helm-swift.log; then
+  # HelmIO does the screen capture and mouse/keyboard for the remote screen. Without it the Mac simply has no remote screen.
+  swiftc -O -o "$APP/Contents/MacOS/HelmIO" "$HERE/macos/HelmIO.swift" 2>/tmp/helm-swift-io.log || { echo "warning: HelmIO not built:" >&2; cat /tmp/helm-swift-io.log >&2; }
   cat > "$APP/Contents/Info.plist" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

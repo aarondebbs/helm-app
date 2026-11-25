@@ -793,7 +793,7 @@ function viewDevices() {
         sec && sec.counts ? h('div', { style: { marginTop: '12px' } }, sevBar(sec.counts), h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, SEV_ORDER.map(k => (sec.counts[k] || 0) + ' ' + k).join(' · '))) : null),
       h('div', { class: 'pcx-acts' },
         h('a', { class: 'btn primary', href: '#/d/' + d.id }, 'Open PC'),
-        d.online && osKey(d) === 'windows' ? h('a', { class: 'btn', href: '#/session/' + d.id + '/screen', target: '_blank', rel: 'noopener' }, 'Remote screen') : null,
+        d.online && (osKey(d) === 'windows' || osKey(d) === 'darwin') ? h('a', { class: 'btn', href: '#/session/' + d.id + '/screen', target: '_blank', rel: 'noopener' }, 'Remote screen') : null,
         h('a', { class: 'btn', href: '#/inbox/' + d.id }, icon('chat'), 'Chat'),
         d.online ? h('a', { class: 'btn', href: '#/session/' + d.id + '/terminal', target: '_blank', rel: 'noopener' }, 'Terminal') : null,
         d.online ? actionButton('Scan now', async () => { await api('POST', `/api/devices/${d.id}/scan`, {}); toast('Scan started on ' + d.name, 'ok'); }) : null));

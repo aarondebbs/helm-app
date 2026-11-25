@@ -218,6 +218,9 @@ func fixtureFor(script string) (string, bool) {
 // launchHelper starts an in-process fake helper (stand-in for the Windows
 // session helper) so the whole screen path can be exercised on Linux.
 func launchHelper(ctx context.Context, hl helperLaunch) (func(), error) {
+	if realMac() {
+		return launchMacHelper(ctx, hl)
+	}
 	if realUnix() {
 		return nil, errors.New("remote screen is not supported on this platform; use the terminal and file tools")
 	}
@@ -293,7 +296,12 @@ func DefaultDataDir() string {
 func CleanupOldBinary() {}
 
 // RunHelper is only meaningful on Windows.
-func RunHelper(args []string) int { return 2 }
+func RunHelper(args []string) int {
+	if realMac() {
+		return runMacHelper(args)
+	}
+	return 2
+}
 
 // ErrNotService is returned by RunService when not started by a service manager.
 var ErrNotService = errors.New("services are only supported on Windows")
