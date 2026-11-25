@@ -92,7 +92,7 @@ final class App: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDele
     // A click opens the status panel (the same page Windows shows); a right-click or control-click shows the short menu.
     @objc func clicked(_ sender: Any?) {
         let e = NSApp.currentEvent
-        if e?.type == .rightMouseUp || (e?.modifierFlags.contains(.control) ?? false) {
+        if false {
             item.menu = buildMenu()
             item.button?.performClick(nil)
             item.menu = nil

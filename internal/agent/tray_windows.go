@@ -326,10 +326,8 @@ func trayWndProc(hwnd, m, wp, lp uintptr) uintptr {
 	switch uint32(m) {
 	case wmApp:
 		switch uint32(lp) {
-		case wmLButtonUp:
-			go openPanelWindow()
-		case wmRButtonUp, wmContextMenu:
-			tray.menu()
+		case wmLButtonUp, wmRButtonUp, wmContextMenu:
+			go openPanelWindow() // a window in the console's style, not a menu; its buttons cover support and chat
 		}
 		return 0
 	case wmTimer:
