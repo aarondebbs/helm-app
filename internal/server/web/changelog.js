@@ -1,6 +1,11 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.15', date: '2026-11-25', title: 'Much faster remote screen, a proper status window', new: [
+    'Clicking the Helm icon (Windows tray or Mac menu bar) now opens a small status window in the same style as this console: connection state, who manages the PC, version, Chat with support and Request support. Right-click still gives the short menu.',
+  ], better: [
+    'Remote screen is no longer limited to about 5 frames per second over a distant connection. Helm used to keep only two pictures in flight, so a 400 ms round trip capped it near 5 fps. It now keeps as many in flight as the connection needs, starts at up to 30 fps, and slows down only when a queue actually builds up.',
+  ] },
   { v: '1.0.14', date: '2026-11-25', title: 'Remote screen on macOS', new: [
     'Remote screen now works on Macs, in the browser like on Windows: view and control the Mac, with the same quality and speed settings. The person at the Mac is asked to allow it unless the PC is set to unattended.',
     'Each Mac has to allow Helm once under System Settings, Privacy & Security: Screen Recording to see the screen and Accessibility to use the mouse and keyboard. If one is missing, the session says which. The remote screen comes with the .pkg installer, not the script installer.',

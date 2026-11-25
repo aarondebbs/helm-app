@@ -24,6 +24,9 @@ type FlowControl struct {
 // NewFlowControl allows two frames in flight, which keeps the link busy without building a queue.
 func NewFlowControl() *FlowControl { return &FlowControl{Max: 2, sent: map[int]time.Time{}} }
 
+// SetMax changes how many frames may be in flight.
+func (f *FlowControl) SetMax(n int) { f.mu.Lock(); f.Max = max(2, n); f.mu.Unlock() }
+
 // CanSend reports whether another frame may be started.
 func (f *FlowControl) CanSend() bool {
 	f.mu.Lock()

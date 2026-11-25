@@ -539,7 +539,7 @@ func isActionInput(t string) bool {
 
 func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly bool) {
 	cp := &capturer{scale: 1, force: true, flow: NewFlowControl()}
-	cp.ad.SetCeiling(8, 55)
+	cp.ad.SetCeiling(30, 55)
 	defer cp.freeDIB()
 	var sendMu sync.Mutex
 	cp.send = func(v any) { sendMu.Lock(); defer sendMu.Unlock(); _ = sendJSON(c, v) }
@@ -615,6 +615,9 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 			cp.refreshMonitors()
 		}
 		frames++
+		cp.adMu.Lock()
+		cp.flow.SetMax(cp.ad.Window())
+		cp.adMu.Unlock()
 		if !cp.flow.CanSend() { // the viewer is still drawing earlier frames: do not queue more
 			continue
 		}

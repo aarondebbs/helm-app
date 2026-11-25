@@ -62,11 +62,13 @@ type Agent struct {
 	stMu sync.Mutex
 	tray TrayStatus
 
-	chatMu    sync.Mutex
-	chat      []chatLine
-	chatLast  time.Time // last message sent from this PC, for rate limiting
-	logoPNG   []byte    // brand logo from the deploy profile (guarded by stMu)
-	chatQuiet bool      // tests: do not touch the desktop
+	chatMu      sync.Mutex
+	chat        []chatLine
+	chatLast    time.Time // last message sent from this PC, for rate limiting
+	supportMu   sync.Mutex
+	supportLast time.Time // last support request from the status window, for rate limiting
+	logoPNG     []byte    // brand logo from the deploy profile (guarded by stMu)
+	chatQuiet   bool      // tests: do not touch the desktop
 
 	cmdSem   chan struct{}
 	updMu    sync.Mutex // serialises Windows Update / winget / self-update operations

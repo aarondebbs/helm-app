@@ -167,6 +167,7 @@ type Adaptive struct {
 	fps, q       int
 	ewma         float64 // smoothed duration of one frame send, in milliseconds
 	rtt          float64 // smoothed frame round-trip time, in milliseconds
+	floor        float64 // lowest recent round-trip time: the link's own delay
 }
 
 // SetCeiling applies the viewer's choice and clamps the current values to it.
@@ -202,9 +203,10 @@ func (a *Adaptive) Observe(d time.Duration) {
 	}
 }
 
-// ObserveRTT records the round-trip time of a frame (sent until the viewer finished drawing it). This is the real
-// measure of the link: above about 250 ms the picture is lagging, so quality and rate drop; below about 90 ms there is
-// room to raise them again.
+// ObserveRTT records the round-trip time of a frame (sent until the viewer finished drawing it). The lowest value seen
+// recently is the link's own delay; anything above it is a queue building up. The picture stays smooth while the queue
+// is short, so the rate and quality rise while it is under about 60 ms and fall when it passes about 160 ms. A long
+// link on its own (a high floor) is not a reason to slow down: see Window, which keeps more frames in flight instead.
 func (a *Adaptive) ObserveRTT(d time.Duration) {
 	ms := float64(d) / float64(time.Millisecond)
 	if a.rtt == 0 {
@@ -212,19 +214,35 @@ func (a *Adaptive) ObserveRTT(d time.Duration) {
 	} else {
 		a.rtt = 0.6*a.rtt + 0.4*ms
 	}
+	if a.floor == 0 || ms < a.floor {
+		a.floor = ms
+	} else {
+		a.floor += (ms - a.floor) * 0.01 // let the floor follow a link that has become slower
+	}
+	queue := a.rtt - a.floor
 	switch {
-	case a.rtt > 250:
+	case queue > 160:
 		a.fps = max(3, a.fps*3/4)
 		a.q = max(30, a.q-6)
-	case a.rtt < 90:
+	case queue < 60:
 		if a.fps < a.MaxFPS {
-			a.fps += 2
-			a.fps = min(a.fps, a.MaxFPS)
+			a.fps = min(a.MaxFPS, a.fps+3)
 		}
 		if a.q < a.MaxQ {
 			a.q = min(a.MaxQ, a.q+3)
 		}
 	}
+}
+
+// Window is how many frames may be in flight: enough to keep the link busy for a whole round trip at the current rate.
+// With two frames and a 200 ms link the stream could never exceed 10 frames per second, however fast everything else is.
+func (a *Adaptive) Window() int {
+	rtt := a.floor
+	if a.rtt > 0 && rtt == 0 {
+		rtt = a.rtt
+	}
+	n := int(float64(max(1, a.fps))*rtt/1000*1.3) + 2
+	return min(12, max(2, n))
 }
 
 // RTT returns the smoothed round-trip time in milliseconds (0 when unknown).

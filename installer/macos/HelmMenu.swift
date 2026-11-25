@@ -2,6 +2,7 @@
 // the status the Helm agent (a root daemon) writes to /Library/Application Support/Helm/public/status.json.
 // It can open the chat window in the browser and send a support request through the agent's local endpoint.
 import Cocoa
+import WebKit
 
 struct Status: Decodable {
     var state: String?
@@ -15,13 +16,20 @@ struct Status: Decodable {
     var supportText: String?
 }
 
-final class App: NSObject, NSApplicationDelegate {
+final class App: NSObject, NSApplicationDelegate, WKUIDelegate, WKNavigationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let path = "/Library/Application Support/Helm/public/status.json"
     var status = Status()
     var fresh = false
+    let popover = NSPopover()
+    var web: WKWebView?
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        popover.behavior = .transient
+        popover.contentSize = NSSize(width: 360, height: 520)
+        item.button?.target = self
+        item.button?.action = #selector(clicked(_:))
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         refresh()
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refresh() }
     }
@@ -51,7 +59,6 @@ final class App: NSObject, NSApplicationDelegate {
             }
             b.toolTip = headline()
         }
-        item.menu = buildMenu()
     }
 
     func headline() -> String {
@@ -80,6 +87,37 @@ final class App: NSObject, NSApplicationDelegate {
         m.addItem(NSMenuItem(title: "About Helm Agent", action: #selector(about), keyEquivalent: ""))
         for i in m.items where i.action != nil { i.target = self }
         return m
+    }
+
+    // A click opens the status panel (the same page Windows shows); a right-click or control-click shows the short menu.
+    @objc func clicked(_ sender: Any?) {
+        let e = NSApp.currentEvent
+        if e?.type == .rightMouseUp || (e?.modifierFlags.contains(.control) ?? false) {
+            item.menu = buildMenu()
+            item.button?.performClick(nil)
+            item.menu = nil
+            return
+        }
+        if popover.isShown { popover.performClose(nil); return }
+        guard fresh, let c = status.control, let t = status.chatToken, let u = URL(string: "http://\(c)/panel/\(t)/"), let b = item.button else {
+            let a = NSAlert(); a.messageText = "Helm Agent"; a.informativeText = headline(); a.runModal(); return
+        }
+        let w = WKWebView(frame: NSRect(x: 0, y: 0, width: 360, height: 520))
+        w.uiDelegate = self
+        w.navigationDelegate = self
+        w.setValue(false, forKey: "drawsBackground")
+        w.load(URLRequest(url: u))
+        let vc = NSViewController(); vc.view = w
+        popover.contentViewController = vc
+        web = w
+        popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // Links that leave the panel (anything but the local agent page) open in the browser.
+    func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration, for a: WKNavigationAction, windowFeatures f: WKWindowFeatures) -> WKWebView? {
+        if let u = a.request.url { NSWorkspace.shared.open(u) }
+        return nil
     }
 
     @objc func chat() {

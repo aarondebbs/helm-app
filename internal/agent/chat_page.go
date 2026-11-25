@@ -26,7 +26,7 @@ button{border:0;border-radius:10px;padding:0 16px;background:var(--accent);color
 button:disabled,textarea:disabled{opacity:.5;cursor:not-allowed}
 #err{color:#e5736a;font-size:12px;padding:0 16px 8px;min-height:0}
 </style></head><body>
-<header><img id="logo" alt="" hidden><span id="dot"></span><b id="title">Chat with support</b><span id="state">Connecting…</span></header>
+<header><a id="back" href="#" hidden title="Back" style="color:var(--mute);text-decoration:none;font-size:20px;line-height:1;margin-right:2px">&#8592;</a><img id="logo" alt="" hidden><span id="dot"></span><b id="title">Chat with support</b><span id="state">Connecting…</span></header>
 <div id="log"><div id="empty">Write to the person who looks after this PC. They will see your message in Helm.</div></div>
 <div id="err"></div>
 <form id="f"><textarea id="t" rows="1" maxlength="2000" placeholder="Write a message" autofocus></textarea><button id="s" type="submit">Send</button></form>
@@ -54,5 +54,6 @@ document.getElementById('f').onsubmit=function(e){e.preventDefault();var v=t.val
   }).catch(function(){err.textContent='Could not reach the Helm agent'}).then(function(){s.disabled=false;t.focus()})};
 t.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('f').requestSubmit()}};
 t.oninput=function(){t.style.height='42px';t.style.height=Math.min(110,t.scrollHeight)+'px'};
+if(/\/panel\//.test(document.referrer)){var bk=document.getElementById('back');bk.hidden=false;bk.href=document.referrer}
 poll();setInterval(poll,2000);
 </script></body></html>`

@@ -326,7 +326,9 @@ func trayWndProc(hwnd, m, wp, lp uintptr) uintptr {
 	switch uint32(m) {
 	case wmApp:
 		switch uint32(lp) {
-		case wmLButtonUp, wmRButtonUp, wmContextMenu:
+		case wmLButtonUp:
+			go openPanelWindow()
+		case wmRButtonUp, wmContextMenu:
 			tray.menu()
 		}
 		return 0
@@ -415,14 +417,25 @@ func (t *trayApp) watchChat() {
 	}
 }
 
-// openChatBrowser shows the chat page in a small window without browser controls (Edge's app mode), and falls back
-// to the default browser if Edge cannot be found.
-func openChatBrowser(s TrayStatus) {
+// openPanelWindow shows the status window (the page the agent serves), and openChatBrowser the chat window, in a
+// small window without browser controls (Edge's app mode). Both fall back to the default browser if Edge is missing.
+func openPanelWindow() {
+	s, err := readTrayStatus()
+	if err != nil {
+		messageBox("Helm Agent", "The agent is not ready yet. Try again in a moment.")
+		return
+	}
+	openAppWindow(s, "panel", "380,580")
+}
+
+func openChatBrowser(s TrayStatus) { openAppWindow(s, "chat", "400,560") }
+
+func openAppWindow(s TrayStatus, kind, size string) {
 	if s.Control == "" || s.ChatToken == "" {
 		messageBox("Helm Agent", "The agent is not ready yet. Try again in a moment.")
 		return
 	}
-	url := "http://" + s.Control + "/chat/" + s.ChatToken + "/"
+	url := "http://" + s.Control + "/" + kind + "/" + s.ChatToken + "/"
 	for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles")} {
 		if base == "" {
 			continue
@@ -430,7 +443,7 @@ func openChatBrowser(s TrayStatus) {
 		exe := base + `\Microsoft\Edge\Application\msedge.exe`
 		if _, err := os.Stat(exe); err == nil {
 			dir := os.Getenv("LOCALAPPDATA") + `\Helm\chat-profile`
-			cmd := exec.Command(exe, "--app="+url, "--window-size=400,560", "--user-data-dir="+dir, "--no-first-run", "--disable-extensions")
+			cmd := exec.Command(exe, "--app="+url, "--window-size="+size, "--user-data-dir="+dir, "--no-first-run", "--disable-extensions")
 			if cmd.Start() == nil {
 				go cmd.Wait()
 				return

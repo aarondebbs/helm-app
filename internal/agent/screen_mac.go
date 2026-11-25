@@ -246,7 +246,7 @@ func runMacHelper(args []string) int {
 	}
 
 	s := &macSession{c: c, io: io0, viewOnly: *viewOnly, flow: NewFlowControl(), force: true}
-	s.ad.SetCeiling(8, 60)
+	s.ad.SetCeiling(30, 60)
 	in := make(chan InputMsg, 256)
 	go func() {
 		defer cancel()
@@ -303,7 +303,7 @@ func (s *macSession) handle(m InputMsg) {
 		if m.FPS >= 1 && m.FPS <= 60 {
 			fps = m.FPS
 		}
-		s.ad.SetCeiling(min(fps, 15), q)
+		s.ad.SetCeiling(fps, q)
 		if m.Scale == 1 || m.Scale == 2 {
 			s.scale = m.Scale
 		}
@@ -393,6 +393,9 @@ func (s *macSession) loop(ctx context.Context, in <-chan InputMsg) {
 		if n := time.Now(); next.Before(n) {
 			next = n
 		}
+		s.mu.Lock()
+		s.flow.SetMax(s.ad.Window())
+		s.mu.Unlock()
 		if !s.flow.CanSend() {
 			continue
 		}

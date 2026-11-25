@@ -138,20 +138,28 @@ func TestFlowControlLimitsFramesInFlight(t *testing.T) {
 	}
 }
 
-func TestAdaptiveFollowsRoundTrip(t *testing.T) {
+func TestAdaptiveFollowsQueueNotDistance(t *testing.T) {
 	var a Adaptive
 	a.SetCeiling(30, 75)
+	// A long but steady link (200 ms) is not a reason to slow down: more frames are kept in flight instead.
+	for i := 0; i < 40; i++ {
+		a.ObserveRTT(200 * time.Millisecond)
+	}
+	if a.FPS() != 30 || a.Window() < 8 {
+		t.Fatalf("steady long link: fps %d window %d", a.FPS(), a.Window())
+	}
+	// A queue building up (round trips far above the floor) does slow it down.
 	for i := 0; i < 20; i++ {
 		a.ObserveRTT(600 * time.Millisecond)
 	}
 	if a.FPS() > 8 || a.Quality() > 50 {
-		t.Fatalf("slow link: fps %d q %d", a.FPS(), a.Quality())
+		t.Fatalf("queueing link: fps %d q %d", a.FPS(), a.Quality())
 	}
-	for i := 0; i < 60; i++ {
-		a.ObserveRTT(30 * time.Millisecond)
+	for i := 0; i < 80; i++ {
+		a.ObserveRTT(200 * time.Millisecond)
 	}
 	if a.FPS() != 30 || a.Quality() != 75 {
-		t.Fatalf("fast link did not recover: fps %d q %d", a.FPS(), a.Quality())
+		t.Fatalf("did not recover: fps %d q %d", a.FPS(), a.Quality())
 	}
 }
 
@@ -166,5 +174,20 @@ func BenchmarkFlatCheckTile(b *testing.B) {
 	t := textLikeTile(128, 128)
 	for i := 0; i < b.N; i++ {
 		FlatBGRA(t, 128, Rect{0, 0, 128, 128})
+	}
+}
+
+func TestWindowGrowsWithDistance(t *testing.T) {
+	var a Adaptive
+	a.SetCeiling(30, 60)
+	if a.Window() != 2 {
+		t.Fatalf("no measurement yet: window %d", a.Window())
+	}
+	for i := 0; i < 10; i++ {
+		a.ObserveRTT(400 * time.Millisecond)
+	}
+	// 30 frames per second over 400 ms means about 12 frames are travelling at once; two would cap it near 5 fps.
+	if a.Window() < 10 {
+		t.Fatalf("window %d is too small for a 400 ms link", a.Window())
 	}
 }

@@ -90,6 +90,57 @@ func (a *Agent) chatRoutes(mux *http.ServeMux, host string) {
 			h(w, r)
 		}
 	}
+	// The status panel opened by clicking the tray or menu-bar icon.
+	mux.HandleFunc("GET /panel/{tok}/{$}", guard(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; font-src 'self'")
+		w.Header().Set("X-Frame-Options", "DENY")
+		_, _ = w.Write([]byte(panelPage))
+	}, false))
+	mux.HandleFunc("GET /panel/{tok}/logo", guard(func(w http.ResponseWriter, r *http.Request) {
+		a.stMu.Lock()
+		logo := a.logoPNG
+		a.stMu.Unlock()
+		if len(logo) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(logo)
+	}, false))
+	mux.HandleFunc("GET /panel/{tok}/s", guard(func(w http.ResponseWriter, r *http.Request) {
+		a.stMu.Lock()
+		t := a.tray
+		a.stMu.Unlock()
+		head, sub := panelHeadline(t.State)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"state": t.State, "headline": head, "sub": sub, "org": t.Org, "computer": t.Computer,
+			"server": t.Server, "version": t.Version, "supportText": t.SupportText, "allowSupport": t.AllowSupport, "accent": t.Accent,
+			"logo": t.HasLogo, "unread": t.ChatUnread, "chatUrl": "/chat/" + t.ChatToken + "/"})
+	}, false))
+	mux.HandleFunc("POST /panel/{tok}/support", guard(func(w http.ResponseWriter, r *http.Request) {
+		a.stMu.Lock()
+		ok := a.tray.State == "connected" && a.tray.AllowSupport
+		host := a.tray.Computer
+		a.stMu.Unlock()
+		if !ok {
+			http.Error(w, "this PC is not connected to the portal right now", http.StatusServiceUnavailable)
+			return
+		}
+		a.supportMu.Lock()
+		recent := time.Since(a.supportLast) < time.Minute
+		if !recent {
+			a.supportLast = time.Now()
+		}
+		a.supportMu.Unlock()
+		if recent {
+			http.Error(w, "a request was sent a moment ago", http.StatusTooManyRequests)
+			return
+		}
+		a.sendFrame(proto.Frame{T: proto.TSupport, Msg: "Support requested from the status window on " + host})
+		w.WriteHeader(http.StatusNoContent)
+	}, true))
 	mux.HandleFunc("GET /chat/{tok}/{$}", guard(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self'")
@@ -158,4 +209,17 @@ func (a *Agent) chatRoutes(mux *http.ServeMux, host string) {
 		a.sendFrame(proto.Frame{T: proto.TChat, Msg: text})
 		w.WriteHeader(http.StatusNoContent)
 	}, true))
+}
+
+// panelHeadline is the one-line state shown in the status window, in plain words.
+func panelHeadline(state string) (string, string) {
+	switch state {
+	case "connected":
+		return "Connected and protected", "Your administrator can see this computer."
+	case "pending":
+		return "Waiting for approval", "Your administrator needs to approve this computer in Helm."
+	case "connecting", "starting":
+		return "Connecting…", ""
+	}
+	return "Offline", "It will reconnect by itself."
 }

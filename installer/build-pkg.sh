@@ -26,6 +26,7 @@ if swiftc -O -o "$APP/Contents/MacOS/HelmMenu" "$HERE/macos/HelmMenu.swift" 2>/t
 <key>CFBundleIdentifier</key><string>com.helm.menu</string><key>CFBundleName</key><string>Helm</string>
 <key>CFBundleExecutable</key><string>HelmMenu</string><key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$VERSION</string><key>LSUIElement</key><true/>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PL
   codesign --force --sign - "$APP" >/dev/null 2>&1 || true
