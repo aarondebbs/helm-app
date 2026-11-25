@@ -1,5 +1,5 @@
 // Helm service worker: keeps the app shell available offline. It never touches /api, /ws or downloads.
-const CACHE = 'helm-shell-v12';
+const CACHE = 'helm-shell-v13';
 const SHELL = ['/', '/style.css', '/ui.css', '/theme.js', '/app.js', '/device.js', '/modules.js', '/pcs.js', '/pages.js', '/home.js', '/inbox.js', '/changelog.js', '/ops.js', '/Inter.woff2', '/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

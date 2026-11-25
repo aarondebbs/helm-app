@@ -1,6 +1,9 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.9', date: '2026-11-25', title: 'Missed scans run when the PC starts', better: [
+    'A PC without real-time protection that was off during the quiet hours now gets its overdue quick scan about two minutes after it connects. A weekly full scan that is overdue still waits for the quiet hours.',
+  ] },
   { v: '1.0.8', date: '2026-11-25', title: 'Reusable installer, Linux real-time protection, scheduled scans', new: [
     'Reusable installer: one installer you can run on many PCs, valid until you revoke it (or for 7, 30 or 90 days, or a number of PCs). Find it under Download agent. PCs it enrols still wait for you to set their plan.',
     'Real-time protection on Linux: on PCs with 2 GB of memory or more, setting up Antivirus also starts ClamAV\'s on-access scanner for /home and /tmp. Smaller PCs such as older Raspberry Pis skip it and say why.',

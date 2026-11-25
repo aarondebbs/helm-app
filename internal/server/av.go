@@ -102,7 +102,38 @@ func (s *Server) autoAV() {
 // scheduledScan covers PCs that have no real-time protection: a quick scan every day and a full scan every week,
 // started only in the quiet hours (01:00 to 06:00 server time) so a scan does not slow people down.
 func (s *Server) scheduledScan(id string, rec AVRec) {
-	if h := time.Now().Hour(); h < 1 || h >= 6 || len(rec.Status) == 0 {
+	if h := time.Now().Hour(); h < 1 || h >= 6 {
+		return
+	}
+	s.runDueScan(id, rec, false)
+}
+
+// catchUpScan runs when a PC connects. If it has no real-time protection and its scan is overdue (it was off during
+// the quiet hours, or has just booted), a quick scan starts two minutes later, once the PC has finished starting up.
+// A weekly full scan that is overdue still waits for the quiet hours.
+func (s *Server) catchUpScan(id string) {
+	time.Sleep(2 * time.Minute)
+	select {
+	case <-s.stop:
+		return
+	default:
+	}
+	if s.hub.online(id) == nil {
+		return
+	}
+	var rec AVRec
+	s.db.view(func(x *dbData) {
+		if r := x.AV[id]; r != nil {
+			rec = *r
+		}
+	})
+	if d, ok := s.st.device(id); ok && d.Approved && d.has("av") {
+		s.runDueScan(id, rec, true)
+	}
+}
+
+func (s *Server) runDueScan(id string, rec AVRec, onConnect bool) {
+	if len(rec.Status) == 0 {
 		return
 	}
 	var st struct {
@@ -114,8 +145,10 @@ func (s *Server) scheduledScan(id string, rec AVRec) {
 	}
 	kind := ""
 	switch {
-	case time.Since(rec.LastFull) > 7*24*time.Hour:
+	case time.Since(rec.LastFull) > 7*24*time.Hour && !onConnect:
 		kind = "full"
+	case onConnect && time.Since(rec.LastQuick) > 24*time.Hour && time.Since(rec.LastFull) > 24*time.Hour:
+		kind = "quick"
 	case time.Since(rec.LastQuick) > 24*time.Hour && time.Since(rec.LastFull) > 24*time.Hour:
 		kind = "quick"
 	default:

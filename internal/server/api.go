@@ -747,6 +747,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	a := &Agent{ID: dev.ID, conn: c, Since: time.Now(), IP: ip}
 	a.approved.Store(dev.Approved)
 	a.setModules(dev.effectiveModules())
+	go s.catchUpScan(dev.ID) // a PC that just came online may have missed its scheduled scan
 	s.hub.attach(a)
 	s.st.touch(func(d *data) {
 		if x := d.Devices[dev.ID]; x != nil {
