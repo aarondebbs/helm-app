@@ -587,3 +587,10 @@ func publicDirOS() string {
 	}
 	return filepath.Join(pd, "HelmPublic")
 }
+
+// shellCommandPS runs a short PowerShell snippet with no window.
+func shellCommandPS(ctx context.Context, script string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, powershellPath(), "-NoProfile", "-NonInteractive", "-Command", script)
+	hideWindow(cmd)
+	return cmd
+}

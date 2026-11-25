@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,6 +12,10 @@ import (
 
 	"helm/internal/proto"
 )
+
+var reAccent = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+const logoPrefix = "data:image/png;base64,"
 
 var reNamePrefix = regexp.MustCompile(`^[A-Za-z0-9_-]{0,20}$`)
 
@@ -28,6 +33,19 @@ func cleanProfile(p *Profile) (*Profile, error) {
 	if !reNamePrefix.MatchString(c.NamePrefix) {
 		return nil, errors.New("the name prefix can use letters, digits, - and _ (20 characters)")
 	}
+	if c.Accent != "" && !reAccent.MatchString(c.Accent) {
+		return nil, errors.New("the brand colour must look like #0d7a70")
+	}
+	if c.Logo != "" {
+		raw, ok := strings.CutPrefix(c.Logo, logoPrefix)
+		if !ok || len(c.Logo) > 90000 {
+			return nil, errors.New("the logo must be a PNG of at most 64 KB")
+		}
+		b, err := base64.StdEncoding.DecodeString(raw)
+		if err != nil || len(b) < 8 || string(b[:8]) != "\x89PNG\r\n\x1a\n" {
+			return nil, errors.New("the logo must be a PNG of at most 64 KB")
+		}
+	}
 	var tags []string
 	for _, t := range c.Tags {
 		if t = strings.TrimSpace(t); t != "" {
@@ -38,7 +56,7 @@ func cleanProfile(p *Profile) (*Profile, error) {
 		}
 	}
 	c.Tags = tags
-	if c.Group == "" && len(c.Tags) == 0 && c.NamePrefix == "" && !c.AutoApprove && c.Org == "" && c.SupportText == "" && !c.HideTray && !c.NoSupportBtn {
+	if c.Group == "" && len(c.Tags) == 0 && c.NamePrefix == "" && !c.AutoApprove && c.Org == "" && c.SupportText == "" && !c.HideTray && !c.NoSupportBtn && c.Accent == "" && c.Logo == "" {
 		return nil, nil
 	}
 	return &c, nil
@@ -49,6 +67,8 @@ func (s *Server) configFrame(r *http.Request, d Device) proto.Frame {
 	cfg := proto.Config{ShowTray: true, AllowSupport: true}
 	if p := d.Profile; p != nil {
 		cfg.Org, cfg.SupportText, cfg.ShowTray, cfg.AllowSupport = p.Org, p.SupportText, !p.HideTray, !p.NoSupportBtn
+		cfg.Accent = p.Accent
+		cfg.Logo = strings.TrimPrefix(p.Logo, logoPrefix)
 	}
 	b, _ := json.Marshal(cfg)
 	return proto.Frame{T: proto.TConfig, Data: b}

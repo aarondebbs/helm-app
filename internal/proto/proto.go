@@ -55,6 +55,7 @@ type Hello struct {
 	IPs         []string `json:"ips"`
 	ConsentMode string   `json:"consentMode"`
 	CanRDP      bool     `json:"canRdp"`
+	Chassis     string   `json:"chassis,omitempty"` // pi | laptop | desktop | vm | server
 }
 
 // Disk is one fixed drive.
@@ -145,6 +146,8 @@ type Config struct {
 	ShowTray     bool   `json:"showTray"`              // show the icon in the notification area (Windows)
 	AllowSupport bool   `json:"allowSupport"`          // the tray menu offers "Request support"
 	PortalURL    string `json:"portalUrl,omitempty"`
+	Accent       string `json:"accent,omitempty"` // brand colour as #rrggbb, used in the chat window
+	Logo         string `json:"logo,omitempty"`   // PNG, base64; only on the wire, the agent keeps it in memory
 }
 
 // Sanitize bounds everything an agent reports about itself, so a misbehaving or hostile agent cannot bloat the
@@ -177,6 +180,9 @@ func (h Hello) Sanitize() Hello {
 	}
 	h.Version, h.Hostname, h.OS, h.OSVersion = cut(h.Version, 40), cut(h.Hostname, 100), cut(h.OS, 20), cut(h.OSVersion, 80)
 	h.Edition, h.Arch, h.User, h.ConsentMode = cut(h.Edition, 80), cut(h.Arch, 20), cut(h.User, 100), cut(h.ConsentMode, 30)
+	if h.Chassis != "pi" && h.Chassis != "laptop" && h.Chassis != "desktop" && h.Chassis != "vm" && h.Chassis != "server" {
+		h.Chassis = ""
+	}
 	h.MACs, h.IPs = list(h.MACs, 16, 40), list(h.IPs, 32, 64)
 	return h
 }

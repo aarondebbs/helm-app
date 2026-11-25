@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -23,6 +25,7 @@ type TrayStatus struct {
 	Control  string `json:"control,omitempty"` // loopback address of the support-request endpoint
 	// Chat with support: the tray opens http://<Control>/chat/<ChatToken>/ in a small window and watches ChatSeq.
 	ChatToken  string    `json:"chatToken,omitempty"`
+	HasLogo    bool      `json:"hasLogo,omitempty"`
 	ChatSeq    int       `json:"chatSeq,omitempty"`    // grows with every message from the administrator
 	ChatUnread int       `json:"chatUnread,omitempty"` // messages from the administrator not yet shown
 	Updated    time.Time `json:"updated"`
@@ -46,7 +49,14 @@ func (a *Agent) setState(state string) {
 }
 
 func (a *Agent) setConfig(c proto.Config) {
+	logo, _ := base64.StdEncoding.DecodeString(c.Logo)
+	if len(logo) > 64<<10 || (len(logo) > 0 && !bytes.HasPrefix(logo, []byte("\x89PNG\r\n\x1a\n"))) {
+		logo = nil
+	}
+	c.Logo = "" // the picture stays in memory and is served to the chat window; it is not copied into status.json
 	a.stMu.Lock()
+	a.logoPNG = logo
+	a.tray.HasLogo = len(logo) > 0
 	a.tray.Config = c
 	a.stMu.Unlock()
 	a.writeStatus()

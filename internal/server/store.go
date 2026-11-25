@@ -69,6 +69,8 @@ type Profile struct {
 	SupportText  string   `json:"supportText,omitempty"`
 	HideTray     bool     `json:"hideTray,omitempty"`
 	NoSupportBtn bool     `json:"noSupportBtn,omitempty"`
+	Accent       string   `json:"accent,omitempty"` // brand colour #rrggbb
+	Logo         string   `json:"logo,omitempty"`   // PNG as a data URL, at most 64 KB
 }
 
 type data struct {

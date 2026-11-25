@@ -10,7 +10,7 @@ const chatPage = `<!doctype html>
 *{box-sizing:border-box}html,body{height:100%;margin:0}
 body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif}
 header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;background:var(--panel)}
-header b{font-weight:600;font-size:15px}
+header b{font-weight:600;font-size:15px}#logo{height:24px;max-width:96px;object-fit:contain}
 #dot{width:8px;height:8px;border-radius:50%;background:var(--mute)}#dot.on{background:var(--accent)}
 #state{color:var(--mute);font-size:12px;margin-left:auto}
 #log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
@@ -26,7 +26,7 @@ button{border:0;border-radius:10px;padding:0 16px;background:var(--accent);color
 button:disabled,textarea:disabled{opacity:.5;cursor:not-allowed}
 #err{color:#e5736a;font-size:12px;padding:0 16px 8px;min-height:0}
 </style></head><body>
-<header><span id="dot"></span><b id="title">Chat with support</b><span id="state">Connecting…</span></header>
+<header><img id="logo" alt="" hidden><span id="dot"></span><b id="title">Chat with support</b><span id="state">Connecting…</span></header>
 <div id="log"><div id="empty">Write to the person who looks after this PC. They will see your message in Helm.</div></div>
 <div id="err"></div>
 <form id="f"><textarea id="t" rows="1" maxlength="2000" placeholder="Write a message" autofocus></textarea><button id="s" type="submit">Send</button></form>
@@ -37,6 +37,8 @@ function hm(iso){var d=new Date(iso);return d.toLocaleTimeString([],{hour:'2-dig
 function draw(d){
   document.getElementById('dot').className=d.online?'on':'';
   document.getElementById('state').textContent=d.enabled===false?'Chat is turned off':d.online?'Connected':'Not connected';
+  if(d.logo){var lg=document.getElementById('logo');if(lg.hidden){lg.src=base+'/logo';lg.hidden=false}}
+  if(/^#[0-9a-fA-F]{6}$/.test(d.accent||'')){var c=d.accent,r=parseInt(c.substr(1,2),16),g=parseInt(c.substr(3,2),16),b=parseInt(c.substr(5,2),16),st=document.documentElement.style;st.setProperty('--accent',c);st.setProperty('--accent-ink',(0.299*r+0.587*g+0.114*b)>150?'#10181a':'#ffffff')}
   if(d.org)document.getElementById('title').textContent=d.org+' support';
   t.disabled=s.disabled=!d.online||d.enabled===false;
   var sig=JSON.stringify(d.messages);if(sig===last)return;last=sig;

@@ -92,9 +92,21 @@ func (a *Agent) chatRoutes(mux *http.ServeMux, host string) {
 	}
 	mux.HandleFunc("GET /chat/{tok}/{$}", guard(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self'")
 		w.Header().Set("X-Frame-Options", "DENY")
 		_, _ = w.Write([]byte(chatPage))
+	}, false))
+	mux.HandleFunc("GET /chat/{tok}/logo", guard(func(w http.ResponseWriter, r *http.Request) {
+		a.stMu.Lock()
+		logo := a.logoPNG
+		a.stMu.Unlock()
+		if len(logo) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(logo)
 	}, false))
 	mux.HandleFunc("GET /chat/{tok}/m", guard(func(w http.ResponseWriter, r *http.Request) {
 		a.chatMu.Lock()
@@ -102,7 +114,7 @@ func (a *Agent) chatRoutes(mux *http.ServeMux, host string) {
 		a.chatMu.Unlock()
 		a.stMu.Lock()
 		unread, online := a.tray.ChatUnread, a.tray.State == "connected"
-		sup, title := a.tray.AllowSupport, a.tray.Org
+		sup, title, accent, hasLogo := a.tray.AllowSupport, a.tray.Org, a.tray.Accent, a.tray.HasLogo
 		if unread != 0 {
 			a.tray.ChatUnread = 0
 		}
@@ -112,7 +124,7 @@ func (a *Agent) chatRoutes(mux *http.ServeMux, host string) {
 			a.sendFrame(proto.Frame{T: proto.TChat, ID: "seen"}) // lets the console show "seen"
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"messages": msgs, "online": online, "enabled": sup, "org": title})
+		_ = json.NewEncoder(w).Encode(map[string]any{"messages": msgs, "online": online, "enabled": sup, "org": title, "accent": accent, "logo": hasLogo})
 	}, false))
 	mux.HandleFunc("POST /chat/{tok}/send", guard(func(w http.ResponseWriter, r *http.Request) {
 		a.stMu.Lock()

@@ -126,3 +126,8 @@ were compiled and statically checked, but never run on Windows during developmen
 - [ ] While the window is behind others, a new message flashes its taskbar button.
 - [ ] Closing and reopening it from the tray menu keeps the conversation.
 - [ ] On Linux (desktop) and macOS: a notification appears and an app-style window opens; `helm-agent chat` reopens it.
+
+## 0.14.0
+
+- [ ] The PC list shows the right picture for a laptop and for a desktop (a battery means laptop).
+- [ ] A token with a logo and colour: the chat window page on the PC shows the logo and colour.

@@ -1,0 +1,59 @@
+'use strict';
+/* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
+const CHANGELOG = [
+  { v: '0.14.0', date: '2026-11-25', title: 'A new sign-in, a rebuilt PC list, branded installers', new: [
+    'Sign in with Google from a clean, centred sign-in page.',
+    'The PC list is rebuilt: rows or cards, live CPU and memory that move smoothly, filter chips, grouping and bulk actions.',
+    'Each PC gets a picture of what it is: Raspberry Pi, laptop, desktop, server or virtual machine, detected by the agent.',
+    'Installers can carry your logo and brand colour, with a live preview of the chat window on the PC, next to company name, support text, group, tags and naming pattern.',
+    'This What\'s new page, and a short summary after each update.'],
+    better: ['Smoother page changes across the console.'], fixed: [] },
+  { v: '0.13.3', date: '2026-11-25', title: 'Home fix', new: [], better: [], fixed: ['Home no longer keeps loading when there are no chats yet.'] },
+  { v: '0.13.2', date: '2026-11-25', title: 'Chat receipts', new: ['Your chat messages show "seen" once the person at the PC has opened them.'], better: ['The Windows tray tooltip shows how many messages are unread.'], fixed: [] },
+  { v: '0.13.1', date: '2026-11-25', title: 'Native chat window', new: [
+    'Windows: the chat with support is now a native window that flashes in the taskbar when you write.',
+    'Linux and macOS: a desktop notification and a small chat window open in the signed-in user\'s session.',
+    'The command helm-agent chat opens the chat by hand on any system.'], better: [], fixed: [] },
+  { v: '0.13.0', title: 'Chat and a new console', new: [
+    'Chat with the person at a PC, from an Inbox for every PC or from each PC\'s Chat tab. Messages are kept for 30 days.',
+    'Telegram and e-mail alert when someone writes to you.'], better: [
+    'The console was redesigned from scratch, with a phone layout and a bottom tab bar.',
+    'Home now answers one question: what needs you right now.'], fixed: [] },
+  { v: '0.12.0', title: 'E-mail alerts and file drop', new: [
+    'E-mail (SMTP) alerts next to Telegram.',
+    'A banner and an alert when a PC needs a restart.',
+    'Drop a file onto the remote screen to send it to the PC.'], better: [], fixed: [] },
+  { v: '0.11.0', title: 'Remote screen and per-system updates', new: [
+    'Remote screen: smoother video with flow control and sharper PNG tiles.',
+    'Updates and software now follow the PC\'s system: Windows Update and winget on Windows, the package manager on Linux, Homebrew on macOS.',
+    'Linux and macOS vulnerability checks and patching.'], better: [
+    'The tray menu no longer says "Open Helm portal".',
+    'The console matches the sign-in look.'], fixed: ['Operating system names show correctly in the PC list.'] },
+];
+
+const seenKey = 'helm-seen-version';
+const unseenVersion = () => { try { return !!S.version && localStorage.getItem(seenKey) !== S.version; } catch (e) { return false; } };
+const markSeen = () => { try { if (S.version) localStorage.setItem(seenKey, S.version); } catch (e) { /* private mode */ } const d = $('#verdot'); if (d) d.remove(); };
+
+function changeBlock(entry, tag) {
+  const part = (cls, label, items) => items.length ? h('div', { class: 'chg ' + cls }, h('h4', null, label), h('ul', null, items.map(t => h('li', null, t)))) : null;
+  return h('article', { class: 'release' },
+    h('header', null, h(tag || 'h2', null, entry.title), h('span', { class: 'rel-meta' }, 'Version ' + entry.v + (entry.date ? ' · ' + new Date(entry.date + 'T12:00').toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' }) : ''))),
+    part('new', 'New', entry.new), part('better', 'Improved', entry.better), part('fixed', 'Fixed', entry.fixed));
+}
+
+route(/^\/whatsnew$/, () => {
+  shell('whatsnew', [h('div', { class: 'pagehead' }, h('h1', null, 'What\'s new')), h('div', { class: 'releases' }, CHANGELOG.map(e => changeBlock(e)))]);
+  markSeen();
+});
+
+// Shown once after the console updates to a new version.
+async function maybeShowWhatsNew() {
+  if (!unseenVersion()) return;
+  const e = CHANGELOG.find(x => x.v === S.version);
+  let had = false; try { had = !!localStorage.getItem(seenKey); } catch (x) { /* ignore */ }
+  if (!e || !had) { markSeen(); return; } // a first visit gets no popup
+  markSeen();
+  const r = await modal('Helm was updated', changeBlock(e, 'h3'), [{ label: 'Close', value: null }, { label: 'See everything', value: true, cls: 'primary' }], { wide: true });
+  if (r) location.hash = '#/whatsnew';
+}

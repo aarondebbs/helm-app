@@ -458,7 +458,7 @@ function shell(active, content) {
       if (key === 'alerts' || key === 'inbox') a.append(badge(key === 'alerts' ? 'alerts' : 'chat'));
       return a;
     })]),
-    h('div', { class: 'sidefoot' }, h('span', null, 'Helm console'), h('span', { id: 'ver' }, S.version ? 'v' + S.version : '')));
+    h('div', { class: 'sidefoot' }, h('span', null, 'Helm console'), h('a', { id: 'ver', href: '#/whatsnew', title: 'What\'s new', class: 'verlink' }, S.version ? 'v' + S.version : '', unseenVersion() ? h('i', { id: 'verdot', class: 'verdot' }) : null)));
   const bodyEl = h('div', { class: 'container' }, content);
   const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Main' },
     TABBAR.map(([href, label, ic, key]) => { const a = h('a', { href, class: 'tab' + (active === key ? ' active' : '') }, h('span', { class: 'tico' }, icon(ic), key === 'alerts' || key === 'inbox' ? badge(key === 'alerts' ? 'alerts' : 'chat') : null), h('span', null, label)); return a; }),
@@ -570,16 +570,18 @@ function showLogin(msg) {
   pw.addEventListener('blur', () => caps.classList.add('hidden'));
   const code = h('input', { type: 'text', inputMode: 'numeric', autocomplete: 'one-time-code', maxLength: 6, placeholder: '6-digit code', required: true });
   const codeField = h('label', { class: 'field' }, h('span', null, 'Authenticator code'), code);
-  const gbox = h('div', { class: 'stack', style: { marginBottom: '18px' } });
+  const gbox = h('div', { class: 'ssoblock hidden' });
+  const GLOGO = () => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); n.setAttribute('viewBox', '0 0 48 48'); n.setAttribute('width', '18'); n.setAttribute('height', '18'); n.setAttribute('aria-hidden', 'true');
+    n.innerHTML = '<path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.2 5.4-4.7 7.1l7.6 5.9c4.5-4.1 6.9-10.2 6.9-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 019.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 000 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/>'; return n; };
+  const orline = h('div', { class: 'orline hidden' }, h('span', null, 'or'));
   fetch('/api/auth/config').then(r => r.json()).then(c => {
     if (c && c.totp === false) { codeField.classList.add('hidden'); code.required = false; }
-    if (c && c.google) gbox.append(h('a', { class: 'btn', href: '/api/auth/google/start', style: { justifyContent: 'center', padding: '9px' } }, 'Sign in with Google'), h('div', { class: 'muted small-text' }, 'Or use your password and authenticator code.'));
-    else gbox.style.display = 'none';
-  }).catch(() => { gbox.style.display = 'none'; });
+    if (c && c.google) { gbox.append(h('a', { class: 'gbtn', href: '/api/auth/google/start' }, GLOGO(), h('span', null, 'Continue with Google'))); gbox.classList.remove('hidden'); orline.classList.remove('hidden'); }
+  }).catch(() => { /* password sign-in still works */ });
   const ssoErr = new URLSearchParams(location.search).get('sso_error');
   if (ssoErr) { msg = ssoErr; history.replaceState(null, '', location.pathname + location.hash); }
   const err = h('div', { class: 'notice bad hidden', role: 'alert' });
-  const card = h('div', { class: 'panel' });
+  const card = h('div', { class: 'logincard' });
   const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center', padding: '10px' } }, 'Sign in');
   let fx = null;
   const fail = text => {
@@ -600,19 +602,18 @@ function showLogin(msg) {
     h('label', { class: 'field' }, h('span', null, 'Password'), h('span', { class: 'pwwrap' }, pw, eye), caps),
     codeField,
     err, btn);
-  card.append(gbox, form);
-  const hr = new Date().getHours(), hello = hr < 5 ? 'Working late' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  card.append(gbox, orline, form);
   const canvas = h('canvas', { class: 'fleetcanvas', 'aria-hidden': 'true' });
-  const ticker = h('ul', { class: 'fleetlog', 'aria-hidden': 'true' });
-  clear($('#app')).append(h('div', { class: 'loginpage' },
-    h('div', { class: 'loginhero' },
-      h('div', { class: 'brand' }, LOGO(), h('span', null, 'Helm')),
-      h('div', { class: 'herotext' }, h('h2', null, 'Every PC, Mac and server in one console.'),
-        h('p', null, 'Machines call in to your own server. You patch, fix and watch them from here, with no VPN in between.')),
-      h('div', { class: 'fleetbox' }, canvas),
-      h('div', { class: 'herofoot' }, ticker, h('small', null, 'Illustration of a fleet. Nothing here is live.'))),
-    h('div', { class: 'loginform', style: { position: 'relative' } }, h('div', { class: 'themefloat' }, themeButton()),
-      h('div', { class: 'login' }, h('h1', null, hello), h('div', { class: 'tagline' }, 'Sign in to your Helm console'), card))));
+  const ticker = h('ul', { class: 'hidden', 'aria-hidden': 'true' });
+  clear($('#app')).append(h('div', { class: 'loginpage centered' },
+    h('div', { class: 'loginbg', 'aria-hidden': 'true' }, canvas),
+    h('div', { class: 'themefloat' }, themeButton()),
+    h('main', { class: 'login' },
+      h('div', { class: 'loginbrand' }, LOGO(), h('span', null, 'Helm')),
+      h('h1', null, 'Sign in'),
+      h('p', { class: 'tagline' }, 'to continue to your Helm console'),
+      card,
+      h('p', { class: 'loginfoot' }, 'Your PCs connect to this server only. Nothing is shared with anyone else.'))));
   fx = fleetField(canvas, ticker);
   cleanups.push(() => fx && fx.stop());
   if (msg) fail(msg);
@@ -646,7 +647,7 @@ async function boot() {
 }
 function boot2() {
   navigate();
-  if (!S.version) api('GET', '/api/info').then(i => { S.version = i.version || ''; const v = $('#ver'); if (v && S.version) v.textContent = 'v' + S.version; }).catch(() => { /* optional */ });
+  if (!S.version) api('GET', '/api/info').then(i => { S.version = i.version || ''; const v = $('#ver'); if (v && S.version) { v.textContent = 'v' + S.version; if (unseenVersion()) v.append(h('i', { id: 'verdot', class: 'verdot' })); } maybeShowWhatsNew(); }).catch(() => { /* optional */ });
 }
 window.addEventListener('hashchange', () => { if (S.csrf) navigate(); });
 setInterval(() => { if (S.csrf) refreshAlertCount(); }, 30000);
@@ -670,8 +671,14 @@ function viewDevices() {
   const search = h('input', { type: 'search', placeholder: 'Search by name, user, IP, tag…', value: f.q, 'aria-label': 'Search devices' });
   const pills = h('div', { class: 'pills' });
   const groupSel = h('select', { 'aria-label': 'Group' }), tagSel = h('select', { 'aria-label': 'Tag' });
-  const sortSel = h('select', { 'aria-label': 'Sort' }, [['name', 'Sort: name'], ['status', 'Sort: status'], ['score', 'Sort: security (worst first)'], ['seen', 'Sort: last seen']].map(([v, l]) => h('option', { value: v, selected: v === f.sort }, l)));
+  const sortSel = h('select', { 'aria-label': 'Sort' }, [['name', 'Sort: name'], ['status', 'Sort: status'], ['score', 'Sort: security (worst first)'], ['seen', 'Sort: last seen'], ['group', 'Group by group']].map(([v, l]) => h('option', { value: v, selected: v === f.sort }, l)));
   const save = () => store.set('devfilter', f);
+  const viewBtn = (k, label, path) => { const b = h('button', { type: 'button', class: 'vbtn' + (f.view === k ? ' on' : ''), title: label, 'aria-label': label, 'aria-pressed': String(f.view === k),
+    onclick: () => { f.view = k; save(); [...viewToggle.children].forEach(c => { const on = c.dataset.k === k; c.classList.toggle('on', on); c.setAttribute('aria-pressed', String(on)); }); draw(true); } });
+    b.dataset.k = k; const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '18'); svg.setAttribute('height', '18'); svg.innerHTML = path; b.append(svg); return b; };
+  const viewToggle = h('div', { class: 'viewtoggle', role: 'group', 'aria-label': 'View' },
+    viewBtn('list', 'List', '<path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
+    viewBtn('cards', 'Cards', '<g fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></g>'));
   const approved = () => devices.filter(d => d.approved);
 
   const visible = () => {
@@ -753,26 +760,49 @@ function viewDevices() {
         d.online ? h('a', { class: 'btn', href: '#/d/' + d.id + '/terminal' }, 'Terminal') : null,
         d.online ? actionButton('Scan now', async () => { await api('POST', `/api/devices/${d.id}/scan`, {}); toast('Scan started on ' + d.name, 'ok'); }) : null));
   };
+  const refs = new Map(); // device id -> function that patches the live numbers in place
+  const lastSeenText = d => d.online ? 'Online now' : 'Seen ' + fmtAgo(d.lastSeen);
+  const liveBits = d => {
+    const cpu = liveMeter('CPU'), mem = liveMeter('Mem'), seen = h('span', { class: 'lseen muted' });
+    const set = x => { const st = x.stats, off = !x.online || !st; cpu.set(off ? null : Math.round(st.cpu), off); mem.set(off ? null : pct(st.memUsed, st.memTotal), off); seen.textContent = x.online ? '' : lastSeenText(x); };
+    set(d); refs.set(d.id, set);
+    return { cpu: cpu.node, mem: mem.node, seen };
+  };
   const listRow = d => {
-    const st = d.stats, hello = d.hello || {}, open = expanded.has(d.id);
+    const hello = d.hello || {}, open = expanded.has(d.id), st = d.stats;
     const who = (st && st.user) || hello.user || '';
     const item = h('div', { class: 'pcitem' + (open ? ' open' : '') });
     const toggleOpen = () => { open ? expanded.delete(d.id) : expanded.add(d.id); draw(true); };
+    const live = liveBits(d);
     item.append(h('div', { class: 'pcrow' },
       h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': 'Select ' + d.name, onchange: e => onSel(d.id, e.target.checked) })),
       h('button', { class: 'pc-main', 'aria-expanded': String(open), onclick: toggleOpen },
-        h('span', { class: 'statusdot' + (d.online ? ' on' : '') }),
-        h('span', { class: 'pc-name' }, h('b', null, d.name), h('span', { class: 'muted small-text' }, [who, osText(d)].filter(Boolean).join(' · ')))),
+        deviceArt(d, 38),
+        h('span', { class: 'pc-name' }, h('b', null, d.name), h('span', { class: 'muted small-text' }, [who, osText(d)].filter(Boolean).join(' · ') || (KIND_LABEL[deviceKind(d)] || '')))),
       h('div', { class: 'pc-tags' }, d.group ? h('span', { class: 'tag group' }, d.group) : null, tagNodes(d.tags)),
-      h('div', { class: 'pc-load' }, d.online && st ? [h('span', null, 'CPU ', h('b', null, Math.round(st.cpu) + '%')), h('span', null, 'Mem ', h('b', null, pct(st.memUsed, st.memTotal) + '%'))] : h('span', { class: 'muted' }, 'Offline, ' + fmtAgo(d.lastSeen))),
+      h('div', { class: 'pc-load' }, live.cpu, live.mem, live.seen),
       h('div', { class: 'pc-score' }, scoreBadge(d.security))));
     if (open) item.append(pcDetail(d));
     return item;
   };
+  const cardFor = d => {
+    const hello = d.hello || {}, st = d.stats, who = (st && st.user) || hello.user || '', live = liveBits(d);
+    const card = h('div', { class: 'pccard' + (selected.has(d.id) ? ' sel' : '') },
+      h('label', { class: 'pccheck', title: 'Select' }, h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': 'Select ' + d.name, onchange: e => { onSel(d.id, e.target.checked); card.classList.toggle('sel', e.target.checked); } })),
+      h('a', { class: 'pccard-main', href: '#/d/' + d.id },
+        deviceArt(d, 64),
+        h('b', { class: 'pccard-name' }, d.name),
+        h('span', { class: 'muted small-text' }, [who, osText(d)].filter(Boolean).join(' · ') || (KIND_LABEL[deviceKind(d)] || '')),
+        h('div', { class: 'pccard-load' }, live.cpu, live.mem),
+        live.seen),
+      h('div', { class: 'pccard-foot' }, h('div', { class: 'pc-tags' }, d.group ? h('span', { class: 'tag group' }, d.group) : null, tagNodes(d.tags)), scoreBadge(d.security)));
+    return card;
+  };
 
   const draw = force => {
-    const sig = JSON.stringify([devices.map(d => [d.id, d.name, d.online, d.approved, d.stats, d.lastSeen, d.group, d.tags, d.security]), f]);
-    if (!force && sig === last) return; last = sig;
+    const sig = JSON.stringify([devices.map(d => [d.id, d.name, d.online, d.approved, d.group, d.tags, d.security, d.hello && d.hello.chassis, d.hello && d.hello.user]), f, [...expanded]]);
+    if (!force && sig === last) { devices.forEach(d => { const set = refs.get(d.id); if (set) set(d); }); return; } // only numbers moved: patch them in place
+    last = sig; refs.clear();
     const pend = devices.filter(d => !d.approved);
     clear(pendingBox).append(pend.length ? h('div', { class: 'notice warn', style: { marginBottom: '16px' } }, h('b', null, plural(pend.length, 'PC') + ' waiting for approval'),
       h('div', { class: 'stack', style: { marginTop: '10px', gap: '8px' } }, pend.map(d => h('div', { class: 'row spread' },
@@ -786,17 +816,34 @@ function viewDevices() {
     if (!approved().length) { content.append(h('div', { class: 'panel' }, emptyState('🖥️', 'No PCs yet', 'Create an enrollment token and install command to add your first PC.', h('a', { class: 'btn primary', href: '#/enroll' }, 'Add a PC')))); return; }
     if (!r.length) { content.append(h('div', { class: 'panel' }, emptyState('🔎', 'No PCs match', 'Try a different search or clear the filters.'))); return; }
     const allOn = r.every(d => selected.has(d.id));
-    content.append(h('div', { class: 'pclist' },
-      h('div', { class: 'pchead' }, h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: allOn, 'aria-label': 'Select all', onchange: e => { r.forEach(d => e.target.checked ? selected.add(d.id) : selected.delete(d.id)); renderBulk(); draw(true); } })),
-        h('span', { class: 'pc-main' }, plural(r.length, 'PC')), h('span', { class: 'pc-tags' }, 'Group'), h('span', { class: 'pc-load' }, 'Load'), h('span', { class: 'pc-score' }, 'Security')),
-      r.map(listRow)));
+    const groupHead = name => h('div', { class: 'pcgroup' }, h('b', null, name || 'No group'), h('span', { class: 'muted' }, plural(r.filter(d => (d.group || '') === (name || '')).length, 'PC')));
+    const parts = [];
+    if (f.sort === 'group') {
+      let cur = null;
+      for (const d of [...r].sort((x, y) => (!x.group - !y.group) || (x.group || '').localeCompare(y.group || '') || x.name.localeCompare(y.name))) {
+        if (cur !== (d.group || '')) { cur = d.group || ''; parts.push({ head: cur }); }
+        parts.push({ d });
+      }
+    } else r.forEach(d => parts.push({ d }));
+    if (f.view === 'cards') {
+      const grid = [];
+      let batch = null;
+      for (const x of parts) { if (x.head !== undefined) { if (batch) grid.push(batch); grid.push(groupHead(x.head)); batch = h('div', { class: 'pcgrid' }); } else { if (!batch) batch = h('div', { class: 'pcgrid' }); batch.append(cardFor(x.d)); } }
+      if (batch) grid.push(batch);
+      content.append(h('div', { class: 'pcgridwrap fadein' }, grid));
+    } else {
+      content.append(h('div', { class: 'pclist fadein' },
+        h('div', { class: 'pchead' }, h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: allOn, 'aria-label': 'Select all', onchange: e => { r.forEach(d => e.target.checked ? selected.add(d.id) : selected.delete(d.id)); renderBulk(); draw(true); } })),
+          h('span', { class: 'pc-main' }, plural(r.length, 'PC')), h('span', { class: 'pc-tags' }, 'Group'), h('span', { class: 'pc-load' }, 'Live'), h('span', { class: 'pc-score' }, 'Security')),
+        parts.map(x => x.head !== undefined ? groupHead(x.head) : listRow(x.d))));
+    }
   };
   const refresh = async () => { try { devices = await getDevices(true); draw(); } catch (e) { /* handled by api() */ } };
 
   shell('devices', [
     pageHead('PCs', 'Every PC you manage. Select one to see more.'),
     pendingBox,
-    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }, search), groupSel, tagSel, sortSel),
+    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }, search), groupSel, tagSel, sortSel, viewToggle),
     h('div', { style: { marginBottom: '14px' } }, pills),
     content, bulk]);
   refresh(); every(5000, refresh);
@@ -836,17 +883,40 @@ function viewEnroll() {
   const consent = h('select', null, [['prompt_if_present', 'Ask the person at the PC if someone is using it (recommended)'], ['always_prompt', 'Always ask before a remote screen session'], ['unattended', 'Never ask (unattended access)']].map(([v, l]) => h('option', { value: v }, l)));
   // Deploy profile: what the installer should set up on the PC before anyone installs it.
   const pGroup = h('input', { type: 'text', placeholder: 'e.g. Reception', maxLength: 40 }), pTags = h('input', { type: 'text', placeholder: 'comma separated, e.g. office, laptop' });
-  const pPrefix = h('input', { type: 'text', placeholder: 'e.g. HQ-', maxLength: 20 }), pOrg = h('input', { type: 'text', placeholder: 'Shown in the tray menu', maxLength: 60 });
+  const pPrefix = h('input', { type: 'text', placeholder: 'e.g. HQ-', maxLength: 20 }), pOrg = h('input', { type: 'text', placeholder: 'Shown in the tray menu and chat', maxLength: 60, oninput: () => paintPreview() });
   const pSupport = h('input', { type: 'text', placeholder: 'e.g. IT desk: it@example.com, ext 4400', maxLength: 200 });
   const pApprove = h('select', null, [['manual', 'I approve each PC in the portal (recommended)'], ['auto', 'Approve automatically when it enrolls']].map(([v, l]) => h('option', { value: v }, l)));
   const pTray = h('input', { type: 'checkbox', checked: true }), pBtn = h('input', { type: 'checkbox', checked: true });
-  const profile = () => ({ group: pGroup.value.trim(), tags: pTags.value.split(',').map(x => x.trim()).filter(Boolean), namePrefix: pPrefix.value.trim(), autoApprove: pApprove.value === 'auto',
+  // Branding: a PNG logo and a colour. They show in the chat window on the PC.
+  let logoData = '';
+  const pAccent = h('input', { type: 'color', value: '#0d7a70', 'aria-label': 'Brand colour' }), pAccentOn = h('input', { type: 'checkbox' });
+  const pLogoFile = h('input', { type: 'file', accept: 'image/png' }), pLogoClear = h('button', { type: 'button', class: 'small ghost hidden' }, 'Remove logo');
+  const prev = { logo: h('img', { alt: '', class: 'pvlogo hidden' }), name: h('b', null, 'Chat with support'), msg: h('span', { class: 'pvmsg' }, 'Hello, how can we help?'), btn: h('span', { class: 'pvbtn' }, 'Send') };
+  const paintPreview = () => {
+    const c = pAccentOn.checked ? pAccent.value : '#0d7a70', n = parseInt(c.slice(1), 16), lum = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+    prev.btn.style.background = c; prev.btn.style.color = lum > 150 ? '#10181a' : '#fff'; prev.msg.style.borderLeftColor = c;
+    prev.name.textContent = (pOrg.value.trim() ? pOrg.value.trim() + ' support' : 'Chat with support');
+    prev.logo.classList.toggle('hidden', !logoData); if (logoData) prev.logo.src = logoData; pLogoClear.classList.toggle('hidden', !logoData);
+  };
+  pLogoFile.addEventListener('change', () => {
+    const f = pLogoFile.files[0]; if (!f) return;
+    if (f.type !== 'image/png') { toast('The logo must be a PNG file', 'bad'); pLogoFile.value = ''; return; }
+    if (f.size > 64 * 1024) { toast('The logo is over 64 KB. Use a smaller PNG (about 200 px wide).', 'bad'); pLogoFile.value = ''; return; }
+    const rd = new FileReader(); rd.onload = () => { logoData = String(rd.result); paintPreview(); }; rd.readAsDataURL(f);
+  });
+  pLogoClear.addEventListener('click', () => { logoData = ''; pLogoFile.value = ''; paintPreview(); });
+  pAccent.addEventListener('input', () => { pAccentOn.checked = true; paintPreview(); }); pAccentOn.addEventListener('change', paintPreview);
+  const profile = () => ({ accent: pAccentOn.checked ? pAccent.value : '', logo: logoData, group: pGroup.value.trim(), tags: pTags.value.split(',').map(x => x.trim()).filter(Boolean), namePrefix: pPrefix.value.trim(), autoApprove: pApprove.value === 'auto',
     org: pOrg.value.trim(), supportText: pSupport.value.trim(), hideTray: !pTray.checked, noSupportBtn: !pBtn.checked });
-  const custom = h('details', { class: 'notice' }, h('summary', null, h('b', null, 'Customize the installer'), h('span', { class: 'muted' }, '  group, name, approval and the tray menu on the PC')),
+  const custom = h('details', { class: 'notice' }, h('summary', null, h('b', null, 'Customize the installer'), h('span', { class: 'muted' }, '  logo, colour, name, group, tags and approval')),
     h('div', { class: 'stack', style: { marginTop: '12px' } },
       h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Put the PC in group'), pGroup), h('label', { class: 'field' }, h('span', null, 'Tags'), pTags), h('label', { class: 'field' }, h('span', null, 'Name prefix'), pPrefix)),
       h('label', { class: 'field' }, h('span', null, 'Approval'), pApprove),
       h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Organisation name'), pOrg), h('label', { class: 'field' }, h('span', null, 'Support contact'), pSupport)),
+      h('div', { class: 'brandrow' }, h('div', { class: 'stack' },
+        h('label', { class: 'field' }, h('span', null, 'Logo (PNG, up to 64 KB)'), h('span', { class: 'row' }, pLogoFile, pLogoClear)),
+        h('label', { class: 'row' }, pAccentOn, 'Use a brand colour', pAccent)),
+        h('div', { class: 'pvwrap', 'aria-label': 'Preview of the chat window on the PC' }, h('div', { class: 'pvhead' }, prev.logo, prev.name), h('div', { class: 'pvbody' }, prev.msg), h('div', { class: 'pvfoot' }, h('span', { class: 'pvinput' }, 'Type a message'), prev.btn))),
       h('label', { class: 'row' }, pTray, 'Show the Helm icon in the taskbar on the PC'),
       h('label', { class: 'row' }, pBtn, 'Let the person at the PC press “Request support”')));
   let info = { baseUrl: location.origin, msi: false, releases: {} };
@@ -981,4 +1051,5 @@ async function viewActivity() {
   } catch (e) { clear(logBox).append(h('div', { style: { padding: '20px' } }, 'Could not load the audit log: ' + e.message)); }
 }
 
-boot();
+// start once every script has loaded, so routes and helpers from the later files exist
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

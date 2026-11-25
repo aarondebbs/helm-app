@@ -119,3 +119,91 @@ button.pc-main:focus-visible { outline-offset: 0; }
 }
 @media (max-width: 560px) { .makeup { grid-template-columns: 1fr; } .feeditem { grid-template-columns: 70px minmax(0, 1fr) auto; } }
 @media (prefers-reduced-motion: reduce) { .sdot.bad, .sdot.ok { animation: none; } }
+
+/* ---- sign-in: one centred card, Google first ---- */
+.loginpage.centered { display: grid; place-items: center; grid-template-columns: 1fr; min-height: 100vh; padding: 24px; position: relative; overflow: hidden; background: var(--bg); }
+.loginpage.centered .loginbg { position: fixed; inset: 0; opacity: .5; pointer-events: none; -webkit-mask-image: radial-gradient(ellipse at center, transparent 18%, #000 80%); mask-image: radial-gradient(ellipse at center, transparent 18%, #000 80%); }
+.loginpage.centered .login { position: relative; width: min(400px, 100%); background: var(--panel, var(--bg)); border: 1px solid var(--line2, var(--line)); border-radius: 14px; padding: 36px 32px 26px; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 18px 48px -18px rgba(0,0,0,.35); animation: cardIn .45s cubic-bezier(.2,.7,.2,1); }
+.loginbrand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 1.15rem; margin-bottom: 22px; }
+.loginpage.centered .login h1 { font-size: 1.6rem; margin: 0 0 4px; font-weight: 600; letter-spacing: -.01em; }
+.loginpage.centered .tagline { margin: 0 0 22px; color: var(--muted); }
+.logincard { display: flex; flex-direction: column; gap: 0; }
+.logincard.shake { animation: shake .35s ease-in-out; }
+.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; height: 42px; border: 1px solid var(--line3, var(--line2, #c9d0d4)); border-radius: 999px; background: var(--bg); color: var(--text); font-weight: 560; text-decoration: none; transition: background .15s, box-shadow .15s; }
+.gbtn:hover { background: var(--hover, rgba(127,127,127,.08)); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.gbtn:focus-visible { outline: 2px solid var(--accent, #1a8f86); outline-offset: 2px; }
+.orline { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--muted); font-size: .85rem; }
+.orline::before, .orline::after { content: ""; flex: 1; height: 1px; background: var(--line2, var(--line)); }
+.loginfoot { margin: 20px 0 0; font-size: .8rem; color: var(--muted); text-align: center; }
+.hidden { display: none !important; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (max-width: 480px) { .loginpage.centered { padding: 0; place-items: stretch; } .loginpage.centered .login { border: 0; border-radius: 0; box-shadow: none; min-height: 100vh; padding: 40px 22px; } .loginpage.centered .loginbg { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .loginpage.centered .login { animation: none; } }
+.loginbrand svg { width: 30px; height: 30px; flex: none; }
+.logincard form .primary { width: 100%; height: 42px; border-radius: 999px; margin-top: 4px; }
+.loginpage.centered .login { padding: 28px 32px 22px; }
+.loginbrand { margin-bottom: 16px; }
+.loginpage.centered .tagline { margin-bottom: 18px; }
+.logincard .stack { gap: 12px; }
+
+/* ---- what's new ---- */
+.verlink { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; } .verlink:hover { text-decoration: underline; }
+.verdot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.releases { display: flex; flex-direction: column; gap: 28px; max-width: 720px; }
+.release header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; } .release h2, .release h3 { margin: 0; }
+.rel-meta { color: var(--muted); font-size: .85rem; }
+.chg { margin: 12px 0 0; } .chg h4 { margin: 0 0 6px; font-size: .8rem; font-weight: 650; display: inline-block; padding: 2px 9px; border-radius: 999px; }
+.chg.new h4 { background: var(--accent-soft); color: var(--accent); } .chg.better h4 { background: var(--panel2); color: var(--text2); } .chg.fixed h4 { background: rgba(229,185,78,.18); color: var(--sev-m, #b8860b); }
+.chg ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; line-height: 1.45; }
+
+/* ---- installer branding preview ---- */
+.brandrow { display: grid; grid-template-columns: 1fr minmax(220px, 260px); gap: 18px; align-items: start; }
+@media (max-width: 640px) { .brandrow { grid-template-columns: 1fr; } }
+.pvwrap { border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; background: var(--bg); font-size: .85rem; }
+.pvhead { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.pvlogo { height: 22px; max-width: 80px; object-fit: contain; }
+.pvbody { padding: 14px 12px; min-height: 64px; } .pvmsg { display: inline-block; padding: 7px 10px; border-left: 3px solid var(--accent); background: var(--panel2); border-radius: 6px; }
+.pvfoot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); } .pvinput { flex: 1; color: var(--muted); border: 1px solid var(--line2); border-radius: 8px; padding: 6px 9px; }
+.pvbtn { background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; font-weight: 600; }
+
+/* ---- PC list: pictures, live meters, cards ---- */
+.dart { position: relative; width: var(--s, 40px); height: var(--s, 40px); flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--panel2); color: var(--text2); }
+.dart svg { width: 74%; height: 74%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dart svg .fill { fill: var(--accent); stroke: none; }
+.dart.on { color: var(--text); } .dart:not(.on) svg { opacity: .55; }
+.dstat { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--line3); border: 2px solid var(--bg); }
+.dart.on .dstat { background: var(--ok); box-shadow: 0 0 0 0 rgba(31,157,110,.5); animation: pulse 2.6s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(31,157,110,.45); } 70%, 100% { box-shadow: 0 0 0 7px rgba(31,157,110,0); } }
+.lmeter { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text2); font-variant-numeric: tabular-nums; }
+.lmeter em { font-style: normal; color: var(--muted); width: 26px; }
+.lbar { width: 54px; height: 5px; border-radius: 3px; background: var(--panel2); overflow: hidden; display: block; }
+.lbar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .7s cubic-bezier(.2,.7,.2,1), background-color .3s; }
+.lbar i.mid { background: var(--sev-m, #d9a21b); } .lbar i.hot { background: var(--bad); }
+.lmeter b { width: 34px; text-align: right; font-weight: 600; } .lmeter.idle { opacity: .5; }
+.pc-load { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; } .lseen { font-size: 12.5px; }
+.pcgroup { display: flex; align-items: baseline; gap: 10px; padding: 16px 2px 8px; font-size: .92rem; } .pcgroup b { font-weight: 650; }
+.pcgridwrap .pcgroup:first-child { padding-top: 4px; }
+.pcgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 14px; }
+.pccard { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); transition: border-color .15s, transform .18s, box-shadow .18s; }
+.pccard:hover { border-color: var(--line3); transform: translateY(-2px); box-shadow: 0 10px 26px -16px rgba(0,0,0,.45); }
+.pccard.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pccard-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 18px 16px 12px; text-decoration: none; color: inherit; }
+.pccard-main .dart { margin-bottom: 8px; border-radius: 14px; }
+.pccard-name { font-size: 1.02rem; font-weight: 620; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pccard-load { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; align-self: stretch; } .pccard-load .lmeter { justify-content: space-between; } .pccard-load .lbar { flex: 1; }
+.pccard-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px 14px; margin-top: auto; }
+.pccheck { position: absolute; top: 10px; right: 10px; opacity: 0; transition: opacity .12s; } .pccard:hover .pccheck, .pccard.sel .pccheck, .pccheck:focus-within { opacity: 1; }
+.viewtoggle { display: inline-flex; border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; flex: none; }
+.vbtn { border: 0; border-radius: 0; background: transparent; padding: 0 11px; height: 36px; color: var(--muted); display: grid; place-items: center; }
+.vbtn.on { background: var(--accent-soft); color: var(--accent); } .vbtn:hover:not(.on) { background: var(--hover); }
+/* smoothness: pages and lists ease in once; reduced motion turns it all off */
+.container > * { animation: pageIn .28s cubic-bezier(.2,.7,.2,1) both; } .fadein { animation: pageIn .22s ease-out both; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pcitem { transition: background .15s; }
+@media (prefers-reduced-motion: reduce) { .container > *, .fadein, .dart.on .dstat { animation: none; } .lbar i, .pccard { transition: none; } }
+@media (max-width: 900px) { .pc-load { gap: 10px; } .lbar { width: 40px; } }
+.pchead, .pcrow { grid-template-columns: 34px minmax(0, 1.5fr) minmax(0, .8fr) minmax(0, 1.55fr) 64px; }
+.pc-load { flex-wrap: nowrap; white-space: nowrap; } .pc-load .lseen { position: static; }
+@media (max-width: 1100px) { .pc-load { flex-wrap: wrap; row-gap: 4px; } }
+.pc-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .pcrow .pc-main { min-width: 0; } .pc-name { min-width: 0; } }

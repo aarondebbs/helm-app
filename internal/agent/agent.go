@@ -64,6 +64,7 @@ type Agent struct {
 	chatMu    sync.Mutex
 	chat      []chatLine
 	chatLast  time.Time // last message sent from this PC, for rate limiting
+	logoPNG   []byte    // brand logo from the deploy profile (guarded by stMu)
 	chatQuiet bool      // tests: do not touch the desktop
 
 	cmdSem   chan struct{}
@@ -350,7 +351,7 @@ func (a *Agent) collectHello() proto.Hello {
 	user, _ := loggedOnUser()
 	macs, ips := netInfo()
 	return proto.Hello{Version: a.cfg.Version, Hostname: host, OS: helloOS(), OSVersion: osv, Edition: ed,
-		Arch: runtime.GOARCH, User: user, MACs: macs, IPs: ips, ConsentMode: a.cfg.ConsentMode, CanRDP: canHostRDP(ed)}
+		Arch: runtime.GOARCH, User: user, MACs: macs, IPs: ips, ConsentMode: a.cfg.ConsentMode, CanRDP: canHostRDP(ed), Chassis: detectChassis(ed)}
 }
 
 // netInfo lists the MAC and IPv4 addresses of physical-looking interfaces.
