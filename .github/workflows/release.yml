@@ -4,6 +4,9 @@ name: release
 on:
   push:
     tags: ["v*"]
+    branches: [main]   # every push to main is checked; a release is built only if VERSION names one that does not exist yet
+  schedule:
+    - cron: "*/15 * * * *"   # also checked every 15 minutes, in case a push did not start a run
   workflow_dispatch:
     inputs:
       tag:
@@ -11,8 +14,11 @@ on:
         required: true
 permissions:
   contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
 env:
-  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -25,7 +31,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           skip=false
-          if [ "${{ github.ref_type }}" = "branch" ] && [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.ref_type }}" = "branch" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             t="v$(tr -d '[:space:]' < VERSION)"
             if gh release view "$t" --repo "${{ github.repository }}" >/dev/null 2>&1; then skip=true; fi
           fi
@@ -37,6 +43,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Work out the release tag
+        run: |
+          [ -n "$TAG" ] || echo "TAG=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod, cache: false }
       - name: Build agent and package
@@ -59,6 +68,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Work out the release tag
+        run: |
+          [ -n "$TAG" ] || echo "TAG=v$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with: { go-version-file: go.mod, cache: false }
       - uses: actions/download-artifact@v4

@@ -49,6 +49,7 @@ type Device struct {
 	Profile    *Profile     `json:"profile,omitempty"` // deploy profile of the token it enrolled with
 	Modules    []string     `json:"modules,omitempty"` // plan chosen at onboarding: any of rmm, av, edr
 	Onboarded  bool         `json:"onboarded,omitempty"`
+	Opts       DeviceOpts   `json:"opts,omitempty"`
 }
 
 // Modules a device can be given. The agent is the same everywhere; the server only sends the commands of
@@ -86,6 +87,12 @@ func (d *Device) has(mod string) bool {
 		}
 	}
 	return false
+}
+
+// DeviceOpts are the per-PC switches that change how the PC itself is configured. Both are off until you turn them on.
+type DeviceOpts struct {
+	FastStartupOff bool `json:"fastStartupOff,omitempty"` // Windows: turn Fast Startup off so Wake-on-LAN works from a full shutdown
+	LinuxRealtime  bool `json:"linuxRealtime,omitempty"`  // Linux: run ClamAV's on-access scanner (needs about 1 GB of memory)
 }
 
 // Token is an enrollment token.

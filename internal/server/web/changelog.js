@@ -1,6 +1,13 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.12', date: '2026-11-25', title: 'PC options, retried setup, offline fixes', new: [
+    'PC options (Plan & modules): turn Windows Fast Startup off for Wake-on-LAN from shutdown, and turn on Linux real-time antivirus, per PC. Both are off until you choose. Real-time on a Linux PC that already had it is switched off when you untick it.',
+    'Setup that fails or leaves something not ready is retried once a day, up to five times. After that the PC shows a warning on its Antivirus tab.',
+  ], fixed: [
+    'Saving a plan for an offline PC now really queues its setup for when it connects. Before, the queue was only filled for PCs that were online.',
+    'Releases build by themselves again: a check on every push to main and every 15 minutes.',
+  ] },
   { v: '1.0.11', date: '2026-11-25', title: 'System marker on every PC', new: [
     'Each PC picture now has a small system marker: a window for Windows, an apple for macOS and a penguin for Linux. They are the standard emoji of your device, not company logos.',
   ] },

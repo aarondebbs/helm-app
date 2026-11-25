@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -245,6 +246,7 @@ type deviceView struct {
 	Approved  bool         `json:"approved"`
 	Modules   []string     `json:"modules"`
 	Onboarded bool         `json:"onboarded"`
+	Opts      DeviceOpts   `json:"opts"`
 	Online    bool         `json:"online"`
 	LastSeen  time.Time    `json:"lastSeen"`
 	LastIP    string       `json:"lastIp"`
@@ -261,6 +263,7 @@ func (s *Server) view(d Device, online map[string]*Agent) deviceView {
 	if v.Tags == nil {
 		v.Tags = []string{}
 	}
+	v.Opts = d.Opts
 	v.Onboarded = d.Onboarded || len(d.Modules) > 0 || d.Approved // approved before 1.0 counts as onboarded
 	v.Modules = d.Modules
 	if !d.Onboarded && len(d.Modules) == 0 && d.Approved {
@@ -372,8 +375,8 @@ func (s *Server) handleOnboard(w http.ResponseWriter, r *http.Request, sess *ses
 		a.setModules(mods)
 		a.approved.Store(true)
 		_ = a.send(proto.Frame{T: proto.TApproved})
-		s.kickAV(id, mods)
 	}
+	s.kickAV(id, mods) // offline PCs are remembered and set up when they connect
 	s.record(r, "device_onboarded", id, strings.Join(mods, "+"))
 	writeJSON(w, 200, map[string]any{"ok": true, "modules": mods})
 }
@@ -406,8 +409,8 @@ func (s *Server) handleModules(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	if a := s.hub.online(id); a != nil {
 		a.setModules(mods)
-		s.kickAV(id, mods)
 	}
+	s.kickAV(id, mods)
 	s.record(r, "device_modules", id, strings.Join(mods, "+"))
 	writeJSON(w, 200, map[string]any{"ok": true, "modules": mods})
 }
@@ -964,4 +967,30 @@ func clip(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// handleOpts sets the per-PC switches (Fast Startup, Linux real-time protection) and applies them straight away.
+func (s *Server) handleOpts(w http.ResponseWriter, r *http.Request, sess *session) {
+	id := r.PathValue("id")
+	var req DeviceOpts
+	if !readJSON(w, r, &req) {
+		return
+	}
+	var mods []string
+	err := s.st.update(func(d *data) error {
+		dev := d.Devices[id]
+		if dev == nil {
+			return errors.New("no such device")
+		}
+		dev.Opts = req
+		mods = dev.effectiveModules()
+		return nil
+	})
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+	s.kickAV(id, mods)
+	s.record(r, "device_options", id, fmt.Sprintf("fastStartupOff=%v linuxRealtime=%v", req.FastStartupOff, req.LinuxRealtime))
+	writeJSON(w, 200, map[string]any{"ok": true, "opts": req})
 }

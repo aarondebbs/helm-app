@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -104,5 +105,32 @@ func TestSetupWaitsForOfflinePC(t *testing.T) {
 	})
 	if len(got) != 2 {
 		t.Fatalf("setup should be remembered for an offline PC, got %v", got)
+	}
+}
+
+func TestSetupRetryBookkeeping(t *testing.T) {
+	s := newTestServer(t)
+	run := func(status, errText, data string) AVRec {
+		s.storeSetup(Job{DeviceID: "pc1", Name: "module.install", Status: status, Err: errText,
+			Args: json.RawMessage(`{"modules":["rmm","av"]}`), Data: json.RawMessage(data)})
+		var r AVRec
+		s.db.view(func(x *dbData) { r = *x.AV["pc1"] })
+		return r
+	}
+	r := run("ok", "", `{"components":[{"module":"rmm","ok":true},{"module":"av","ok":false}]}`)
+	if len(r.SetupPending) != 1 || r.SetupPending[0] != "av" || r.SetupFails != 1 {
+		t.Fatalf("a component that is not ready must be retried: %+v", r)
+	}
+	r = run("error", "apt is locked", ``)
+	if r.SetupFails != 2 || len(r.SetupPending) != 2 {
+		t.Fatalf("a failed run must be retried: %+v", r)
+	}
+	r = run("error", `unknown command "module.install"`, ``)
+	if len(r.SetupPending) != 0 || r.SetupFails != 0 {
+		t.Fatalf("an agent without the command must not be retried: %+v", r)
+	}
+	r = run("ok", "", `{"components":[{"module":"rmm","ok":true},{"module":"av","ok":true}]}`)
+	if len(r.SetupPending) != 0 || r.SetupFails != 0 {
+		t.Fatalf("success must clear the retry state: %+v", r)
 	}
 }

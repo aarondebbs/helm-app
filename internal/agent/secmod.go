@@ -661,11 +661,14 @@ func installPackages(ctx context.Context, c *cmdCtx, debian, rpm, arch []string)
 
 func (a *Agent) cmdModuleInstall(ctx context.Context, c *cmdCtx) (any, error) {
 	var args struct {
-		Modules []string `json:"modules"`
+		Modules        []string `json:"modules"`
+		FastStartupOff bool     `json:"fastStartupOff"` // Windows: also turn Fast Startup off so Wake-on-LAN works from shutdown
+		LinuxRealtime  bool     `json:"linuxRealtime"`  // Linux: also run ClamAV's on-access scanner
 	}
 	if err := decode(c.args, &args); err != nil {
 		return nil, err
 	}
+	a.setupOpts = setupOpts{fastStartupOff: args.FastStartupOff, linuxRealtime: args.LinuxRealtime}
 	var res []compResult
 	for _, m := range args.Modules {
 		r := compResult{Module: m}
@@ -674,7 +677,7 @@ func (a *Agent) cmdModuleInstall(ctx context.Context, c *cmdCtx) (any, error) {
 		case "rmm":
 			r.OK = true
 			step("Remote management is part of the agent")
-			if st, _ := configureWOL(ctx, c.progress); len(st) > 0 {
+			if st, _ := configureWOL(ctx, c.progress, args.FastStartupOff); len(st) > 0 {
 				r.Steps = append(r.Steps, st...)
 			}
 		case "av":
@@ -737,7 +740,16 @@ func (a *Agent) installAV(ctx context.Context, c *cmdCtx, r *compResult, step fu
 			_, _ = secRun(ctx, 30*time.Second, "systemctl", "enable", "--now", "clamav-freshclam")
 			step("Turned on ClamAV’s own automatic updates")
 		}
-		installLinuxRealtime(ctx, c, r, step)
+		if a.setupOpts.linuxRealtime {
+			installLinuxRealtime(ctx, c, r, step)
+		} else {
+			if haveBin("systemctl") && linuxRealtimeOn(ctx) {
+				_, _ = secRun(ctx, 2*time.Minute, "systemctl", "disable", "--now", "helm-clamonacc")
+				step("Real-time protection was switched off for this PC")
+			} else {
+				step("Real-time protection is off for this PC (turn it on under Plan & modules). Scheduled scans cover it.")
+			}
+		}
 		return true
 	case "darwin":
 		step("XProtect is built into macOS and updates itself")
@@ -773,23 +785,33 @@ func (a *Agent) installEDR(ctx context.Context, c *cmdCtx, r *compResult, step f
 // cmdWOLConfigure turns on wake-on-magic-packet on the PC's physical network cards, so Helm can wake it from another agent
 // on the same network. Wi-Fi cannot do this reliably and is left alone.
 func (a *Agent) cmdWOLConfigure(ctx context.Context, c *cmdCtx) (any, error) {
-	steps, ok := configureWOL(ctx, c.progress)
+	var args struct {
+		FastStartupOff bool `json:"fastStartupOff"`
+	}
+	if err := decode(c.args, &args); err != nil {
+		return nil, err
+	}
+	steps, ok := configureWOL(ctx, c.progress, args.FastStartupOff)
 	return map[string]any{"ok": ok, "steps": steps}, nil
 }
 
-func configureWOL(ctx context.Context, progress func(string)) ([]string, bool) {
+func configureWOL(ctx context.Context, progress func(string), fastStartupOff bool) ([]string, bool) {
 	var steps []string
 	add := func(s string) { steps = append(steps, s); progress(s) }
 	ok := false
 	switch runtime.GOOS {
 	case "windows":
-		out, err := secPS(ctx, 2*time.Minute, `$o=@();
+		fs := "$false"
+		if fastStartupOff {
+			fs = "$true"
+		}
+		out, err := secPS(ctx, 2*time.Minute, `$FS=`+fs+`;$o=@();
 Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'Not Present' -and $_.PhysicalMediaType -notmatch '802.11' } | ForEach-Object {
   $n=$_.Name
   try { Set-NetAdapterPowerManagement -Name $n -WakeOnMagicPacket Enabled -ErrorAction Stop; $o+="OK|$n|wake on magic packet is on" } catch { $o+="NO|$n|"+$_.Exception.Message }
   try { Set-NetAdapterAdvancedProperty -Name $n -DisplayName 'Wake on Magic Packet' -DisplayValue 'Enabled' -ErrorAction Stop } catch {}
 }
-try { Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0 -ErrorAction Stop; $o+="OK|Fast Startup|turned off, so the card stays powered when the PC is shut down" } catch { $o+="NO|Fast Startup|"+$_.Exception.Message }
+if($FS){ try { Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0 -ErrorAction Stop; $o+="OK|Fast Startup|turned off, so the card stays powered when the PC is shut down" } catch { $o+="NO|Fast Startup|"+$_.Exception.Message } }
 $o -join [string][char]10`)
 		if err != nil {
 			add("Could not read the network cards: " + firstLines(out+err.Error(), 160))
@@ -1004,8 +1026,7 @@ func installLinuxRealtime(ctx context.Context, c *cmdCtx, r *compResult, step fu
 		return
 	}
 	if kb := memTotalKB(); kb < realtimeMinMemKB {
-		step(fmt.Sprintf("Real-time protection skipped: this PC has %d MB of memory and it needs about 2 GB. Scheduled scans cover it instead.", kb/1024))
-		return
+		step(fmt.Sprintf("Note: this PC has only %d MB of memory and the real-time scanner uses about 1 GB. You asked for it, so it is being set up; turn it off if the PC slows down.", kb/1024))
 	}
 	if !haveBin("clamd") {
 		if out, err := installPackages(ctx, c, []string{"clamav-daemon"}, []string{"clamd"}, []string{"clamav"}); err != nil {
@@ -1060,3 +1081,6 @@ func installLinuxRealtime(ctx context.Context, c *cmdCtx, r *compResult, step fu
 		r.Note = "Real-time protection is still starting"
 	}
 }
+
+// setupOpts are the per-PC switches the server sent with the last setup. They also decide what a later retry does.
+type setupOpts struct{ fastStartupOff, linuxRealtime bool }

@@ -24,30 +24,18 @@ type AVRec struct {
 	StatusAt     time.Time       `json:"statusAt"`
 	Status       json.RawMessage `json:"status,omitempty"`
 	UpdatedAt    time.Time       `json:"updatedAt"`              // last successful signature update that Helm started
-	SetupPending []string        `json:"setupPending,omitempty"` // modules whose setup could not run because the PC was offline
-	LastQuick    time.Time       `json:"lastQuick,omitempty"`    // last scan Helm started by itself
+	SetupPending []string        `json:"setupPending,omitempty"` // modules whose setup is still to do: the PC was offline, or it failed
+	SetupFails   int             `json:"setupFails,omitempty"`
+	SetupTriedAt time.Time       `json:"setupTriedAt,omitempty"`
+	LastQuick    time.Time       `json:"lastQuick,omitempty"` // last scan Helm started by itself
 	LastFull     time.Time       `json:"lastFull,omitempty"`
 	LastErr      string          `json:"lastErr,omitempty"`
 	LastErrAt    time.Time       `json:"lastErrAt,omitempty"`
 }
 
 func (s *Server) storeAV(j Job) {
-	// An agent from before 1.0.1 does not know module.install. Carry on without it: the antivirus engine it
-	// already has is still updated and read, and installing one needs the agent update.
-	if j.Name == "module.install" && (j.Status == "ok" || strings.Contains(j.Err, "unknown command")) {
-		s.db.update(func(d *dbData) {
-			if r := d.AV[j.DeviceID]; r != nil {
-				r.SetupPending = nil
-			}
-		})
-		var a struct{ Modules []string }
-		_ = json.Unmarshal(j.Args, &a)
-		for _, m := range a.Modules {
-			if m == "av" {
-				_, _ = s.hub.dispatch(j.DeviceID, "av.update", json.RawMessage(`{}`), "auto-av")
-				_, _ = s.hub.dispatch(j.DeviceID, "av.status", json.RawMessage(`{}`), "auto-av")
-			}
-		}
+	if j.Name == "module.install" {
+		s.storeSetup(j)
 		return
 	}
 	if j.Name != "av.status" && j.Name != "av.update" {
@@ -79,8 +67,7 @@ func (s *Server) storeAV(j Job) {
 // kickAV installs whatever the chosen modules need on the PC (an antivirus engine, a firewall tool).
 // When that finishes, storeAV starts the first definition update.
 func (s *Server) kickAV(id string, mods []string) {
-	args, _ := json.Marshal(map[string]any{"modules": mods})
-	if _, err := s.hub.dispatch(id, "module.install", args, "auto-setup"); err != nil {
+	if _, err := s.hub.dispatch(id, "module.install", s.setupArgs(id, mods), "auto-setup"); err != nil {
 		// Offline: remember it and do it when the PC next connects.
 		s.db.update(func(d *dbData) {
 			if d.AV == nil {
@@ -108,8 +95,70 @@ func (s *Server) runPendingSetup(id string) {
 		return
 	}
 	time.Sleep(10 * time.Second) // let the connection settle
-	args, _ := json.Marshal(map[string]any{"modules": mods})
-	_, _ = s.hub.dispatch(id, "module.install", args, "auto-setup")
+	_, _ = s.hub.dispatch(id, "module.install", s.setupArgs(id, mods), "auto-setup")
+}
+
+// setupArgs is what the agent is told to set up: the modules, plus this PC's switches.
+func (s *Server) setupArgs(id string, mods []string) json.RawMessage {
+	var o DeviceOpts
+	if d, ok := s.st.device(id); ok {
+		o = d.Opts
+	}
+	b, _ := json.Marshal(map[string]any{"modules": mods, "fastStartupOff": o.FastStartupOff, "linuxRealtime": o.LinuxRealtime})
+	return b
+}
+
+const maxSetupTries = 5
+
+// storeSetup records how a setup run went. A run that fails, or leaves a component not ready, is remembered and
+// retried once a day, up to five times. An agent that does not know the command (older than 1.0.5) is not retried.
+func (s *Server) storeSetup(j Job) {
+	var a struct{ Modules []string }
+	_ = json.Unmarshal(j.Args, &a)
+	var res struct {
+		Components []struct {
+			Module string `json:"module"`
+			OK     bool   `json:"ok"`
+		} `json:"components"`
+	}
+	_ = json.Unmarshal(j.Data, &res)
+	var failed []string
+	switch {
+	case j.Status != "ok" && strings.Contains(j.Err, "unknown command"):
+		// nothing to retry
+	case j.Status != "ok":
+		failed = a.Modules
+	default:
+		for _, c := range res.Components {
+			if !c.OK {
+				failed = append(failed, c.Module)
+			}
+		}
+	}
+	s.db.update(func(d *dbData) {
+		if d.AV == nil {
+			d.AV = map[string]*AVRec{}
+		}
+		r := d.AV[j.DeviceID]
+		if r == nil {
+			r = &AVRec{}
+			d.AV[j.DeviceID] = r
+		}
+		r.SetupTriedAt = time.Now()
+		if len(failed) == 0 {
+			r.SetupPending, r.SetupFails = nil, 0
+		} else {
+			r.SetupPending, r.SetupFails = failed, r.SetupFails+1
+		}
+	})
+	// The antivirus engine is there (or this agent cannot install one): fetch definitions and read the state.
+	for _, m := range a.Modules {
+		if m == "av" && j.Status == "ok" || m == "av" && strings.Contains(j.Err, "unknown command") {
+			_, _ = s.hub.dispatch(j.DeviceID, "av.update", json.RawMessage(`{}`), "auto-av")
+			_, _ = s.hub.dispatch(j.DeviceID, "av.status", json.RawMessage(`{}`), "auto-av")
+			break
+		}
+	}
 }
 
 // autoAV keeps the antivirus intelligence of every online PC with the module fresh.
@@ -129,6 +178,14 @@ func (s *Server) autoAV() {
 			_, _ = s.hub.dispatch(d.ID, "av.update", json.RawMessage(`{}`), "auto-av")
 		} else if time.Since(rec.StatusAt) > avStatusEvery {
 			_, _ = s.hub.dispatch(d.ID, "av.status", json.RawMessage(`{}`), "auto-av")
+		}
+		if len(rec.SetupPending) > 0 && rec.SetupFails < maxSetupTries && time.Since(rec.SetupTriedAt) > 24*time.Hour {
+			s.db.update(func(x *dbData) {
+				if r := x.AV[d.ID]; r != nil {
+					r.SetupTriedAt = time.Now() // counts as tried even if the PC does not answer
+				}
+			})
+			_, _ = s.hub.dispatch(d.ID, "module.install", s.setupArgs(d.ID, rec.SetupPending), "auto-setup")
 		}
 		s.scheduledScan(d.ID, rec)
 	}
@@ -217,6 +274,8 @@ type avRow struct {
 	StatusAt   time.Time       `json:"statusAt,omitempty"`
 	State      string          `json:"state"` // current, stale, missing, unknown, error
 	Hint       string          `json:"hint,omitempty"`
+	SetupFails int             `json:"setupFails,omitempty"`
+	SetupLeft  []string        `json:"setupLeft,omitempty"`
 	Err        string          `json:"err,omitempty"`
 	Raw        json.RawMessage `json:"-"`
 }
@@ -239,6 +298,7 @@ func (s *Server) avRows() []avRow {
 			}
 		})
 		row.UpdatedAt, row.StatusAt, row.Err = rec.UpdatedAt, rec.StatusAt, rec.LastErr
+		row.SetupFails, row.SetupLeft = rec.SetupFails, rec.SetupPending
 		if len(rec.Status) > 0 {
 			var st struct {
 				Engine     string `json:"engine"`

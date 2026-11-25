@@ -52,11 +52,12 @@ type creds struct {
 
 // Agent is the running agent.
 type Agent struct {
-	cfg  Config
-	log  *log.Logger
-	mu   sync.Mutex
-	conn *ws.Conn
-	cr   *creds
+	cfg       Config
+	log       *log.Logger
+	setupOpts setupOpts // switches from the last component setup
+	mu        sync.Mutex
+	conn      *ws.Conn
+	cr        *creds
 
 	stMu sync.Mutex
 	tray TrayStatus

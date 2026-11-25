@@ -171,7 +171,7 @@ function setupButton(dev, id, mods, after) {
   const btn = actionButton('Set up components', async () => {
     if (!dev.online) throw new Error('This PC is offline.');
     out.classList.remove('hidden'); out.textContent = 'Working… installing can take a few minutes.';
-    let r; try { r = await runCmd(id, 'module.install', { modules: mods }, { wait: 3000, onProgress: j => { out.textContent = (j.progress || []).slice(-4).join('\n') || 'Working…'; }, keepAlive: true }); } catch (e) { out.textContent = /unknown command/i.test(e.message) ? 'This PC runs an older agent that cannot install components yet. Update it first (Settings → Updates → Update PCs now), then try again.' : e.message; return; }
+    let r; try { r = await runCmd(id, 'module.install', { modules: mods, fastStartupOff: !!(dev.opts && dev.opts.fastStartupOff), linuxRealtime: !!(dev.opts && dev.opts.linuxRealtime) }, { wait: 3000, onProgress: j => { out.textContent = (j.progress || []).slice(-4).join('\n') || 'Working…'; }, keepAlive: true }); } catch (e) { out.textContent = /unknown command/i.test(e.message) ? 'This PC runs an older agent that cannot install components yet. Update it first (Settings → Updates → Update PCs now), then try again.' : e.message; return; }
     const comps = ((r && r.result) || r || {}).components || [];
     out.textContent = comps.map(c => (c.ok ? 'Ready: ' : 'Problem: ') + c.module.toUpperCase() + '\n  ' + (c.steps || []).join('\n  ') + (c.note ? '\n  ' + c.note : '')).join('\n') || 'Nothing to do.';
     if (after) after();
@@ -186,6 +186,7 @@ async function tabAntivirus(body, dev, id) {
   const load = async () => {
     let rows; try { rows = (await api('GET', '/api/av')).rows; } catch (e) { clear(box).append(h('div', { class: 'notice bad' }, e.message)); return; }
     const row = rows.find(r => r.id === id) || {};
+    if (row.setupLeft && row.setupLeft.length && row.setupFails >= 5) body.prepend(h('div', { class: 'notice bad' }, 'Automatic setup of ' + row.setupLeft.join(', ').toUpperCase() + ' failed ' + row.setupFails + ' times and Helm has stopped retrying. Open Plan & modules and press Set up components to see why.'));
     const sigLine = [row.engine, row.signatures && row.signatures.slice(0, 60)].filter(Boolean).join(' · ') || 'not read yet';
     const chip = { current: ['ok', 'Up to date'], stale: ['bad', 'Out of date'], missing: ['bad', 'No engine'], unknown: ['warn', 'Checking'], error: ['bad', 'Error'] }[row.state || 'unknown'];
     const threats = h('div'), out = h('pre', { class: 'out hidden' });
@@ -255,6 +256,14 @@ function tabEdr(body, dev, id) {
 // ---------- Plan & modules tab ----------
 function tabPlan(body, dev, id) {
   const pick = modulePicker(dev.modules || ['rmm']);
+  {
+    const os = String((dev.hello && dev.hello.os) || '').toLowerCase(), o = Object.assign({}, dev.opts || {});
+    const fs = h('input', { type: 'checkbox', checked: !!o.fastStartupOff }), rt = h('input', { type: 'checkbox', checked: !!o.linuxRealtime });
+    if (os === 'windows' || os === 'linux') body.append(h('div', { class: 'panel stack' }, h('h3', { style: { margin: 0 } }, 'PC options'),
+      os === 'windows' ? h('label', { class: 'row', style: { flexWrap: 'nowrap', alignItems: 'flex-start' } }, fs, h('span', null, h('b', null, 'Turn Windows Fast Startup off'), h('span', { class: 'muted' }, '  Lets Wake-on-LAN wake this PC from a full shutdown. Start-up can be a little slower.'))) : null,
+      os === 'linux' ? h('label', { class: 'row', style: { flexWrap: 'nowrap', alignItems: 'flex-start' } }, rt, h('span', null, h('b', null, 'Real-time antivirus (ClamAV on-access)'), h('span', { class: 'muted' }, '  Scans files in /home and /tmp when they are opened. Uses about 1 GB of memory, so leave it off on small PCs; scheduled scans cover those.'))) : null,
+      actionButton('Save options', async () => { await api('POST', `/api/devices/${id}/options`, { fastStartupOff: fs.checked, linuxRealtime: rt.checked }); dev.opts = { fastStartupOff: fs.checked, linuxRealtime: rt.checked }; S.devices = null; toast(dev.online ? 'Saved. Applying it on the PC now.' : 'Saved. It is applied when the PC next connects.', 'ok'); })));
+  }
   if (dev.online) body.append(h('div', { class: 'panel stack' }, h('h3', { style: { margin: 0 } }, 'Set up this PC'), h('p', { class: 'muted', style: { margin: 0 } }, 'Installs what the plan needs (antivirus engine, firewall tool) and turns on Wake-on-LAN on the network card so Helm can wake this PC. Runs by itself when a plan is saved.'), setupButton(dev, id, dev.modules || ['rmm'])));
   body.append(h('div', { class: 'panel stack' }, h('h3', { style: { margin: 0 } }, 'Plan & modules'),
     h('p', { class: 'muted', style: { margin: 0 } }, 'The agent on the PC is always the same. Switching a module on or off only changes what this console is allowed to do with it.'), pick.node,

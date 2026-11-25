@@ -243,6 +243,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/av", s.authed(s.handleAV, false))
 	mux.HandleFunc("POST /api/av/update", s.authed(s.handleAVUpdateAll, true))
 	mux.HandleFunc("POST /api/devices/{id}/onboard", s.authed(s.handleOnboard, true))
+	mux.HandleFunc("POST /api/devices/{id}/options", s.authed(s.handleOpts, true))
 	mux.HandleFunc("POST /api/devices/{id}/modules", s.authed(s.handleModules, true))
 	mux.HandleFunc("POST /api/devices/{id}/edit", s.authed(s.handleEdit, true))
 	mux.HandleFunc("DELETE /api/devices/{id}", s.authed(s.handleDeleteDevice, true))
