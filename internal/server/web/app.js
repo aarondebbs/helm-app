@@ -881,7 +881,8 @@ function viewDevices() {
   shell('devices', [
     pageHead('PCs', 'Every PC you manage. Select one to see more.'),
     pendingBox,
-    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }, search), groupSel, tagSel, sortSel, viewToggle),
+    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }, search), groupSel, tagSel, sortSel, viewToggle,
+      actionButton('Refresh', async () => { await refresh(); toast('List updated', 'ok'); })),
     h('div', { style: { marginBottom: '14px' } }, pills),
     content, bulk]);
   refresh(); every(5000, refresh);

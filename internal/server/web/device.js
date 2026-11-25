@@ -336,7 +336,14 @@ function tabTools(body, dev, id) {
     const addr = `${t.bind}:${t.port}`;
     clear(tun).append(h('div', { class: 'notice' }, 'Tunnel open until ' + fmtTime(t.expires) + '. One connection only. Connect your RDP client to: ', h('strong', { class: 'mono' }, addr), ' ', copyButton(() => addr),
       h('p', { class: 'muted' }, 'Sign in with a local administrator account. The tunnel listens on the server\'s ' + t.bind + ' address; reach it over Tailscale or SSH port-forwarding if that is loopback.'),
-      actionButton('Close tunnel', async () => { await api('DELETE', '/api/tunnels/' + t.id); clear(tun); }, 'small')));
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'primary', onclick: () => {
+          // A ready-made .rdp file: opens Windows Remote Desktop (or Microsoft Remote Desktop on a Mac) straight at the tunnel.
+          const rdpText = ['full address:s:' + addr, 'prompt for credentials:i:1', 'screen mode id:i:1', 'compression:i:1', 'networkautodetect:i:1', 'bandwidthautodetect:i:1', 'connection type:i:7', 'bitmapcachepersistenable:i:1', 'redirectclipboard:i:1', 'audiomode:i:2', ''].join('\r\n');
+          const a = h('a', { href: URL.createObjectURL(new Blob([rdpText], { type: 'application/x-rdp' })), download: (dev.name || 'pc').replace(/[^A-Za-z0-9._-]+/g, '-') + '.rdp' });
+          document.body.append(a); a.click(); a.remove();
+        } }, 'Download .rdp file'),
+        actionButton('Close tunnel', async () => { await api('DELETE', '/api/tunnels/' + t.id); clear(tun); }, 'small'))));
   });
   const upd = actionButton('Update agent now', async () => { const r = await runCmd(id, 'agent.update', {}, { wait: 60 }); toast(r && r.message ? r.message : 'Update requested', 'ok'); });
   const uninst = actionButton('Uninstall agent', async () => {
@@ -346,7 +353,7 @@ function tabTools(body, dev, id) {
   body.append(
     h('div', { class: 'panel stack' }, h('h3', null, 'Message the user'), title, text,
       h('div', null, actionButton('Show message', async () => { await runCmd(id, 'msg', { title: title.value, text: text.value }, { wait: 20 }); toast('Message shown', 'ok'); }))),
-    h('div', { class: 'panel stack' }, h('h3', null, 'Remote Desktop (RDP)'), rdp,
+    h('div', { class: 'panel stack' }, h('h3', null, 'Remote Desktop (RDP)'), h('p', { class: 'muted', style: { margin: 0 } }, 'The fastest way to work on a PC: a real Remote Desktop connection at full speed. Enable it, open a tunnel, then open the .rdp file.'), rdp,
       h('div', { class: 'row' }, h('label', null, 'Tunnel for ', mins), openTun), tun),
     h('div', { class: 'panel stack' }, h('h3', null, 'Agent'), h('p', { class: 'muted' }, 'Version ' + ((dev.hello && dev.hello.version) || '?')), h('div', { class: 'row' }, upd, uninst)));
   loadRdp();

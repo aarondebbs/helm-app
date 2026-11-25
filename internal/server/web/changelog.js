@@ -1,6 +1,10 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.16', date: '2026-11-25', title: 'Refresh button, one-click Remote Desktop file', new: [
+    'A Refresh button on the PCs page updates the list straight away (it also updates itself every few seconds).',
+    'Tools → Remote Desktop: after opening the tunnel, Download .rdp file gives you a ready file that opens Windows Remote Desktop (or Microsoft Remote Desktop on a Mac) at the tunnel. It is a real Remote Desktop connection, so it runs at full speed and is the best choice for long sessions.',
+  ] },
   { v: '1.0.15', date: '2026-11-25', title: 'Much faster remote screen, a proper status window', new: [
     'Clicking the Helm icon (Windows tray or Mac menu bar) now opens a small status window in the same style as this console: connection state, who manages the PC, version, Chat with support and Request support. Right-click still gives the short menu.',
   ], better: [
