@@ -388,7 +388,15 @@ func netInfo() (macs, ips []string) {
 			}
 		}
 		if got {
-			macs = append(macs, ifc.HardwareAddr.String())
+			mac := ifc.HardwareAddr.String()
+			if runtime.GOOS == "darwin" {
+				// A Mac wakes up for its built-in hardware address. The one the system shows can be a private,
+				// rotating Wi-Fi address that the sleeping network card does not answer to.
+				if hw := macHardwareAddrs()[ifc.Name]; hw != "" && hw != mac {
+					macs = append(macs, hw)
+				}
+			}
+			macs = append(macs, mac)
 		}
 	}
 	return

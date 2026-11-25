@@ -881,6 +881,13 @@ $o -join [string][char]10`)
 			ok = true
 			add("Wake for network access is on")
 		}
+		// Power Nap and TCP keep-alive let a sleeping Mac keep answering on the network.
+		for _, o := range [][2]string{{"powernap", "1"}, {"tcpkeepalive", "1"}} {
+			if _, err := secRun(ctx, 20*time.Second, "pmset", "-a", o[0], o[1]); err == nil {
+				add(o[0] + " is on")
+			}
+		}
+		add("A Mac can be woken from sleep, not from a full shutdown. Wi-Fi Macs wake reliably only on some models; a wired connection is the dependable way.")
 	}
 	return steps, ok
 }

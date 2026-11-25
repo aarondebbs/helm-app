@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -752,4 +753,30 @@ func (a *Agent) macHandlers(m map[string]handlerFn) {
 	}
 	m["rdp.enable"] = unsupported("Remote Desktop")
 	m["rdp.disable"] = unsupported("Remote Desktop")
+}
+
+// parseHardwarePorts reads `networksetup -listallhardwareports`: device name to the card's own (hardware) address.
+func parseHardwarePorts(out string) map[string]string {
+	m := map[string]string{}
+	dev := ""
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		switch {
+		case strings.HasPrefix(l, "Device:"):
+			dev = strings.TrimSpace(strings.TrimPrefix(l, "Device:"))
+		case strings.HasPrefix(l, "Ethernet Address:") && dev != "":
+			if hw, err := net.ParseMAC(strings.TrimSpace(strings.TrimPrefix(l, "Ethernet Address:"))); err == nil && len(hw) == 6 {
+				m[dev] = hw.String()
+			}
+		}
+	}
+	return m
+}
+
+func macHardwareAddrs() map[string]string {
+	out, err := exec.Command("networksetup", "-listallhardwareports").Output()
+	if err != nil {
+		return nil
+	}
+	return parseHardwarePorts(string(out))
 }
