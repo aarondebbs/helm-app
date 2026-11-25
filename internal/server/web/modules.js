@@ -171,7 +171,7 @@ function setupButton(dev, id, mods, after) {
   const btn = actionButton('Set up components', async () => {
     if (!dev.online) throw new Error('This PC is offline.');
     out.classList.remove('hidden'); out.textContent = 'Working… installing can take a few minutes.';
-    const r = await runCmd(id, 'module.install', { modules: mods }, { wait: 3000, onProgress: j => { out.textContent = (j.progress || []).slice(-4).join('\n') || 'Working…'; }, keepAlive: true });
+    let r; try { r = await runCmd(id, 'module.install', { modules: mods }, { wait: 3000, onProgress: j => { out.textContent = (j.progress || []).slice(-4).join('\n') || 'Working…'; }, keepAlive: true }); } catch (e) { out.textContent = /unknown command/i.test(e.message) ? 'This PC runs an older agent that cannot install components yet. Update it first (Settings → Updates → Update PCs now), then try again.' : e.message; return; }
     const comps = ((r && r.result) || r || {}).components || [];
     out.textContent = comps.map(c => (c.ok ? 'Ready: ' : 'Problem: ') + c.module.toUpperCase() + '\n  ' + (c.steps || []).join('\n  ') + (c.note ? '\n  ' + c.note : '')).join('\n') || 'Nothing to do.';
     if (after) after();

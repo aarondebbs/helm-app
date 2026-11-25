@@ -29,7 +29,9 @@ type AVRec struct {
 }
 
 func (s *Server) storeAV(j Job) {
-	if j.Name == "module.install" && j.Status == "ok" {
+	// An agent from before 1.0.1 does not know module.install. Carry on without it: the antivirus engine it
+	// already has is still updated and read, and installing one needs the agent update.
+	if j.Name == "module.install" && (j.Status == "ok" || strings.Contains(j.Err, "unknown command")) {
 		var a struct{ Modules []string }
 		_ = json.Unmarshal(j.Args, &a)
 		for _, m := range a.Modules {

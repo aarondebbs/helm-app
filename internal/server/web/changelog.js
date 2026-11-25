@@ -1,6 +1,9 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.3', date: '2026-11-25', title: 'Older agents no longer show an error', fixed: [
+    'PCs still running an agent from before 1.0.1 no longer fail with unknown command module.install. Helm carries on with the antivirus update, and Set up components tells you to update that PC first.',
+  ] },
   { v: '1.0.2', date: '2026-11-25', title: 'A proper About and Updates section', new: [
     'Settings → Updates now opens with the Helm logo and the exact version this server runs, like winver.',
   ], improved: [
