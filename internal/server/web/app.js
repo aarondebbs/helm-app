@@ -1041,7 +1041,7 @@ function viewEnroll() {
     onLeave(stopWatch);
   };
 
-  shell('enroll', [pageHead('Download the agent', 'Pick the system. Each download is made for one PC and stops working after 30 minutes.'),
+  shell('enroll', [pageHead('Download the agent', 'Pick the system. Each download is made for one PC and stops working after 30 minutes. For a rollout, use the reusable installer below.'),
     h('div', { class: 'osgrid' },
       osCard('windows', 'Windows', 'Windows 10 and 11, 64-bit. A double-click installer (.msi).', '🪟'),
       osCard('linux', 'Linux', 'Debian, Ubuntu, Raspberry Pi OS. A script you run with sudo.', '🐧'),
@@ -1049,6 +1049,35 @@ function viewEnroll() {
     out,
     h('p', { class: 'muted', style: { marginTop: '14px' } }, 'After installing, the PC appears here and you choose what it gets: RMM, Antivirus, EDR, or any mix.'),
     h('div', { class: 'panel stack', style: { marginTop: '14px' } }, h('h3', { style: { margin: 0 } }, 'Installer options'), h('label', { class: 'field' }, h('span', null, 'Remote screen consent on that PC'), consent), custom)]);
+  // The exception to one-PC installers: a reusable installer for many PCs that stays valid until you revoke it.
+  const reLabel = h('input', { type: 'text', placeholder: 'e.g. Office rollout, spring', maxlength: 80 });
+  const reDays = h('select', null, [[0, 'Until I revoke it'], [7, '7 days'], [30, '30 days'], [90, '90 days']].map(([v, l]) => h('option', { value: v }, l)));
+  const reMax = h('input', { type: 'number', min: 0, max: 100000, value: 0, style: { width: '7em' } });
+  const reOut = h('div'), reList = h('div', { class: 'stack' });
+  const drawRe = async () => {
+    let rows = []; try { rows = (await api('GET', '/api/tokens')).filter(t => t.reusable && !t.revoked); } catch (e) { /* shown empty */ }
+    clear(reList).append(rows.length ? table(['Installer', 'Created', 'Used', 'Valid until', ''].map(x => ({ label: x })), rows.map(t => h('tr', null,
+      h('td', null, t.label), h('td', { class: 'nowrap' }, fmtTime(t.createdAt)), h('td', null, t.uses + (t.maxUses ? ' of ' + t.maxUses : '') + ' PCs'),
+      h('td', null, new Date(t.expiresAt).getFullYear() > new Date().getFullYear() + 10 ? 'Until revoked' : new Date(t.expiresAt).toLocaleDateString()),
+      h('td', null, actionButton('Revoke', async () => { if (!(await confirmDialog('Revoke ' + t.label + '? It stops working at once. PCs already installed keep working.', 'Revoke installer'))) return; await api('DELETE', '/api/tokens/' + t.id); toast('Revoked', 'ok'); drawRe(); }, 'danger'))))) : h('div', { class: 'muted' }, 'No reusable installers are active.'));
+  };
+  const rePanel = h('div', { class: 'panel stack', style: { marginTop: '14px' } },
+    h('div', { class: 'phead' }, h('h3', { style: { margin: 0 } }, 'Reusable installer'), h('span', { class: 'chip warn plain' }, 'Many PCs · until you revoke it')),
+    h('p', { class: 'muted', style: { margin: 0 } }, 'Normally an installer works for one PC and expires after 30 minutes. This is the exception: one installer file you can run on many PCs, for a rollout. Anyone who holds the file can enrol a PC, so keep it private and revoke it when the rollout is done. Every PC it enrols still waits for you to set its plan; none is approved automatically.'),
+    h('div', { class: 'row' }, h('label', { class: 'field' }, h('span', null, 'Name'), reLabel), h('label', { class: 'field' }, h('span', null, 'Valid for'), reDays), h('label', { class: 'field' }, h('span', null, 'Limit (0 = none)'), reMax)),
+    actionButton('Create reusable installer', async () => {
+      const r = await api('POST', '/api/tokens', { reusable: true, label: reLabel.value.trim(), days: Number(reDays.value), maxUses: Number(reMax.value) || 0, profile: profile() });
+      const base = info.baseUrl;
+      clear(reOut).append(h('div', { class: 'notice ok' }, h('b', null, 'Created. This is the only time the file can be downloaded; make another and revoke this one if you lose it.'),
+        h('div', { class: 'row', style: { marginTop: '10px' } },
+          info.installer ? actionButton('Download Windows installer (.msi)', () => fetchInstaller('windows', r.token, 'Helm-Agent.msi'), 'primary') : null,
+          actionButton('Linux script (.sh)', () => fetchInstaller('linux', r.token, 'install-linux.sh')),
+          actionButton('macOS script (.sh)', () => fetchInstaller('macos', r.token, 'install-macos.sh'))),
+        h('div', { style: { marginTop: '10px' } }, h('div', { class: 'muted small-text' }, 'Or on Windows, in an elevated prompt:'), cmdBlock('msiexec /i ' + base + '/dl/Helm-Agent.msi /qn SERVER=' + base + ' TOKEN=' + r.token))));
+      drawRe();
+    }, 'primary'), reOut, h('h4', { style: { margin: '6px 0 0' } }, 'Active reusable installers'), reList);
+  document.querySelector('.container') && document.querySelector('.container').append(rePanel);
+  drawRe();
   api('GET', '/api/info').then(i => { info = i; }).catch(() => { });
 }
 

@@ -23,7 +23,9 @@ const (
 type AVRec struct {
 	StatusAt  time.Time       `json:"statusAt"`
 	Status    json.RawMessage `json:"status,omitempty"`
-	UpdatedAt time.Time       `json:"updatedAt"` // last successful signature update that Helm started
+	UpdatedAt time.Time       `json:"updatedAt"`           // last successful signature update that Helm started
+	LastQuick time.Time       `json:"lastQuick,omitempty"` // last scan Helm started by itself
+	LastFull  time.Time       `json:"lastFull,omitempty"`
 	LastErr   string          `json:"lastErr,omitempty"`
 	LastErrAt time.Time       `json:"lastErrAt,omitempty"`
 }
@@ -93,7 +95,44 @@ func (s *Server) autoAV() {
 		} else if time.Since(rec.StatusAt) > avStatusEvery {
 			_, _ = s.hub.dispatch(d.ID, "av.status", json.RawMessage(`{}`), "auto-av")
 		}
+		s.scheduledScan(d.ID, rec)
 	}
+}
+
+// scheduledScan covers PCs that have no real-time protection: a quick scan every day and a full scan every week,
+// started only in the quiet hours (01:00 to 06:00 server time) so a scan does not slow people down.
+func (s *Server) scheduledScan(id string, rec AVRec) {
+	if h := time.Now().Hour(); h < 1 || h >= 6 || len(rec.Status) == 0 {
+		return
+	}
+	var st struct {
+		Enabled  bool `json:"enabled"`
+		Realtime bool `json:"realtime"`
+	}
+	if json.Unmarshal(rec.Status, &st) != nil || !st.Enabled || st.Realtime {
+		return
+	}
+	kind := ""
+	switch {
+	case time.Since(rec.LastFull) > 7*24*time.Hour:
+		kind = "full"
+	case time.Since(rec.LastQuick) > 24*time.Hour && time.Since(rec.LastFull) > 24*time.Hour:
+		kind = "quick"
+	default:
+		return
+	}
+	args, _ := json.Marshal(map[string]any{"kind": kind})
+	if _, err := s.hub.dispatch(id, "av.scan", args, "auto-scan"); err != nil {
+		return
+	}
+	s.db.update(func(d *dbData) {
+		if r := d.AV[id]; r != nil {
+			r.LastQuick = time.Now()
+			if kind == "full" {
+				r.LastFull = time.Now()
+			}
+		}
+	})
 }
 
 type avRow struct {

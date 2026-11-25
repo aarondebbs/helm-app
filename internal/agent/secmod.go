@@ -78,7 +78,7 @@ func (a *Agent) cmdAVStatus(ctx context.Context, c *cmdCtx) (any, error) {
 			return map[string]any{"engine": "none", "enabled": false, "hint": "Install ClamAV (apt install clamav) to enable scanning on this machine"}, nil
 		}
 		v, _ := secRun(ctx, 20*time.Second, "clamscan", "--version")
-		return map[string]any{"engine": "ClamAV", "enabled": true, "signatures": strings.TrimSpace(v), "realtime": haveBin("clamd")}, nil
+		return map[string]any{"engine": "ClamAV", "enabled": true, "signatures": strings.TrimSpace(v), "realtime": linuxRealtimeOn(ctx)}, nil
 	case "darwin":
 		v, _ := secRun(ctx, 10*time.Second, "defaults", "read", "/Library/Apple/System/Library/CoreServices/XProtect.bundle/Contents/Info", "CFBundleShortVersionString")
 		return map[string]any{"engine": "XProtect (built in)", "enabled": true, "signatures": strings.TrimSpace(v), "hint": "macOS keeps XProtect on and updates it itself; Helm reads its version."}, nil
@@ -737,6 +737,7 @@ func (a *Agent) installAV(ctx context.Context, c *cmdCtx, r *compResult, step fu
 			_, _ = secRun(ctx, 30*time.Second, "systemctl", "enable", "--now", "clamav-freshclam")
 			step("Turned on ClamAV’s own automatic updates")
 		}
+		installLinuxRealtime(ctx, c, r, step)
 		return true
 	case "darwin":
 		step("XProtect is built into macOS and updates itself")
@@ -967,4 +968,95 @@ func countFiles(ctx context.Context, targets []string, limit time.Duration) int 
 		}
 	}
 	return n
+}
+
+// ---------------- Linux real-time protection (ClamAV on-access) ----------------
+
+const realtimeMinMemKB = 1800000 // about 2 GB; the ClamAV daemon alone holds roughly 1 GB of signatures
+
+func linuxRealtimeOn(ctx context.Context) bool {
+	if !haveBin("systemctl") {
+		return false
+	}
+	out, _ := secRun(ctx, 10*time.Second, "systemctl", "is-active", "helm-clamonacc")
+	return strings.TrimSpace(out) == "active"
+}
+
+func memTotalKB() int {
+	b, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(l, "MemTotal:") {
+			var n int
+			fmt.Sscanf(strings.TrimSpace(strings.TrimPrefix(l, "MemTotal:")), "%d", &n)
+			return n
+		}
+	}
+	return 0
+}
+
+// installLinuxRealtime sets up ClamAV's daemon and its on-access scanner as a service, but only on machines with
+// enough memory. Files in /home and /tmp are scanned as they are opened; threats are logged, nothing is deleted.
+func installLinuxRealtime(ctx context.Context, c *cmdCtx, r *compResult, step func(string)) {
+	if !haveBin("systemctl") {
+		return
+	}
+	if kb := memTotalKB(); kb < realtimeMinMemKB {
+		step(fmt.Sprintf("Real-time protection skipped: this PC has %d MB of memory and it needs about 2 GB. Scheduled scans cover it instead.", kb/1024))
+		return
+	}
+	if !haveBin("clamd") {
+		if out, err := installPackages(ctx, c, []string{"clamav-daemon"}, []string{"clamd"}, []string{"clamav"}); err != nil {
+			step("Real-time protection could not be installed: " + firstLines(out+err.Error(), 160))
+			return
+		}
+	}
+	conf := ""
+	for _, p := range []string{"/etc/clamav/clamd.conf", "/etc/clamd.d/scan.conf", "/etc/clamd.conf"} {
+		if _, err := os.Stat(p); err == nil {
+			conf = p
+			break
+		}
+	}
+	onacc, err := exec.LookPath("clamonacc")
+	if conf == "" || err != nil {
+		step("Real-time protection could not be set up: the ClamAV daemon configuration or clamonacc was not found")
+		return
+	}
+	if b, _ := os.ReadFile(conf); !strings.Contains(string(b), "OnAccessIncludePath") {
+		f, err := os.OpenFile(conf, os.O_APPEND|os.O_WRONLY, 0o644)
+		if err == nil {
+			_, _ = f.WriteString("\n# Added by Helm: scan files when they are opened\nOnAccessIncludePath /home\nOnAccessIncludePath /tmp\nOnAccessExcludeUname clamav\nOnAccessExcludeRootUID yes\n")
+			f.Close()
+		}
+	}
+	daemon := ""
+	for _, n := range []string{"clamav-daemon", "clamd@scan", "clamd"} {
+		if _, err := secRun(ctx, 10*time.Second, "systemctl", "cat", n); err == nil {
+			daemon = n
+			break
+		}
+	}
+	if daemon == "" {
+		step("Real-time protection could not be set up: the ClamAV daemon service was not found")
+		return
+	}
+	_, _ = secRun(ctx, 3*time.Minute, "systemctl", "enable", "--now", daemon)
+	_, _ = secRun(ctx, 3*time.Minute, "systemctl", "restart", daemon)
+	unit := "[Unit]\nDescription=Helm real-time antivirus (ClamAV on-access scanner)\nAfter=" + daemon + ".service\nRequires=" + daemon + ".service\n\n[Service]\nExecStart=" + onacc + " -F --fdpass --log=/var/log/helm-clamonacc.log -c " + conf + "\nRestart=on-failure\nRestartSec=20\n\n[Install]\nWantedBy=multi-user.target\n"
+	if err := os.WriteFile("/etc/systemd/system/helm-clamonacc.service", []byte(unit), 0o644); err != nil {
+		step("Real-time protection could not be set up: " + err.Error())
+		return
+	}
+	_, _ = secRun(ctx, 30*time.Second, "systemctl", "daemon-reload")
+	_, _ = secRun(ctx, 3*time.Minute, "systemctl", "enable", "--now", "helm-clamonacc")
+	time.Sleep(5 * time.Second)
+	if linuxRealtimeOn(ctx) {
+		step("Real-time protection is on: files in /home and /tmp are scanned when opened")
+	} else {
+		step("Real-time protection was installed but is not running yet. ClamAV can take a few minutes to load its signatures; Helm re-checks it.")
+		r.Note = "Real-time protection is still starting"
+	}
 }

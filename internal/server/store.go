@@ -98,6 +98,7 @@ type Token struct {
 	MaxUses   int       `json:"maxUses"`
 	Uses      int       `json:"uses"`
 	Revoked   bool      `json:"revoked"`
+	Reusable  bool      `json:"reusable,omitempty"` // an installer for many PCs, valid until it expires or is revoked
 	Profile   *Profile  `json:"profile,omitempty"`
 }
 
@@ -315,12 +316,30 @@ func (s *Store) CreateTokenP(label string, ttl time.Duration, maxUses int, pf *P
 	return plain, t, err
 }
 
+// CreateReusable makes an installer token for many PCs. It works until it is revoked, runs out of uses (maxUses, 0 = no
+// limit) or passes days (0 = no expiry date). Every PC it enrols still waits for onboarding: it never approves by itself.
+func (s *Store) CreateReusable(label string, maxUses, days int, pf *Profile) (string, Token, error) {
+	s.purgeTokens()
+	if pf == nil {
+		pf = &Profile{}
+	}
+	pf.AutoApprove, pf.Modules = false, nil
+	exp := time.Now().UTC().AddDate(20, 0, 0)
+	if days > 0 {
+		exp = time.Now().UTC().AddDate(0, 0, days)
+	}
+	plain := "hlm_" + randHex(20)
+	t := Token{ID: randHex(6), Label: label, Hash: sha256hex(plain), CreatedAt: time.Now().UTC(), ExpiresAt: exp, MaxUses: maxUses, Reusable: true, Profile: pf}
+	err := s.update(func(d *data) error { d.Tokens[t.ID] = &t; return nil })
+	return plain, t, err
+}
+
 // purgeTokens drops tokens that are used up, revoked or past their expiry.
 func (s *Store) purgeTokens() {
 	_ = s.update(func(d *data) error {
 		now := time.Now()
 		for id, t := range d.Tokens {
-			if t.Revoked || now.After(t.ExpiresAt.Add(24*time.Hour)) || (t.MaxUses > 0 && t.Uses >= t.MaxUses && now.After(t.CreatedAt.Add(time.Hour))) {
+			if t.Revoked || now.After(t.ExpiresAt.Add(24*time.Hour)) || (!t.Reusable && t.MaxUses > 0 && t.Uses >= t.MaxUses && now.After(t.CreatedAt.Add(time.Hour))) {
 				delete(d.Tokens, id)
 			}
 		}

@@ -1,6 +1,11 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.8', date: '2026-11-25', title: 'Reusable installer, Linux real-time protection, scheduled scans', new: [
+    'Reusable installer: one installer you can run on many PCs, valid until you revoke it (or for 7, 30 or 90 days, or a number of PCs). Find it under Download agent. PCs it enrols still wait for you to set their plan.',
+    'Real-time protection on Linux: on PCs with 2 GB of memory or more, setting up Antivirus also starts ClamAV\'s on-access scanner for /home and /tmp. Smaller PCs such as older Raspberry Pis skip it and say why.',
+    'PCs without real-time protection get a quick scan every day and a full scan every week, started between 01:00 and 06:00.',
+  ] },
   { v: '1.0.7', date: '2026-11-25', title: 'Scan progress, antivirus update fix, real-time protection', new: [
     'Antivirus scans, intelligence updates and component setup now appear under Running now in Activity. ClamAV scans show files scanned, a percentage and the current folder. Microsoft Defender does not report a percentage, so Helm shows how long the scan has run.',
     'On Windows Helm switches Defender real-time protection back on at every intelligence update and when a plan is set up, and says so plainly when Windows will not allow it.',

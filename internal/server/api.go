@@ -610,10 +610,12 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request, sess *sess
 
 func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, sess *session) {
 	var req struct {
-		Label   string   `json:"label"`
-		Hours   int      `json:"hours"`
-		MaxUses int      `json:"maxUses"`
-		Profile *Profile `json:"profile"`
+		Label    string   `json:"label"`
+		Hours    int      `json:"hours"`
+		MaxUses  int      `json:"maxUses"`
+		Days     int      `json:"days"`
+		Reusable bool     `json:"reusable"`
+		Profile  *Profile `json:"profile"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -625,6 +627,23 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, sess 
 	}
 	if len(req.Label) > 80 {
 		writeErr(w, 400, "label too long")
+		return
+	}
+	if req.Reusable {
+		if req.MaxUses < 0 || req.MaxUses > 100000 || req.Days < 0 || req.Days > 3650 {
+			writeErr(w, 400, "the use limit or the number of days is out of range")
+			return
+		}
+		if strings.TrimSpace(req.Label) == "" {
+			req.Label = "Reusable installer " + time.Now().Format("2006-01-02")
+		}
+		plain, t, err := s.st.CreateReusable(req.Label, req.MaxUses, req.Days, pf)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		s.record(r, "token_created", "", "reusable: "+req.Label)
+		writeJSON(w, 200, map[string]any{"token": plain, "info": t})
 		return
 	}
 	plain, t, err := s.st.CreateTokenP(req.Label, tokenTTL, 1, pf)

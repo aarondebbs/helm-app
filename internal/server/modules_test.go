@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 
 	"helm/internal/proto"
@@ -66,5 +67,28 @@ func TestModuleInstallAllowedOnAnyPlan(t *testing.T) {
 		if !modulesAllow(have, "module.install") {
 			t.Errorf("module.install should be allowed for plan %v", have)
 		}
+	}
+}
+
+func TestReusableInstallerUntilRevoked(t *testing.T) {
+	st, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, tk, err := st.CreateReusable("deploy", 0, 0, &Profile{AutoApprove: true, Modules: []string{"rmm", "av"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tk.Profile.AutoApprove || len(tk.Profile.Modules) != 0 {
+		t.Fatal("a reusable installer must never approve PCs by itself")
+	}
+	for i := 0; i < 3; i++ {
+		if _, _, err := st.Enroll(plain, proto.Hello{Hostname: fmt.Sprintf("pc%d", i), OS: "windows"}, "1.2.3.4"); err != nil {
+			t.Fatalf("enrol %d: %v", i, err)
+		}
+	}
+	_ = st.update(func(d *data) error { d.Tokens[tk.ID].Revoked = true; return nil })
+	if _, _, err := st.Enroll(plain, proto.Hello{Hostname: "late", OS: "windows"}, "1.2.3.4"); err == nil {
+		t.Fatal("a revoked installer must stop working")
 	}
 }
