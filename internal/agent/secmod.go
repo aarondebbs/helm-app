@@ -21,13 +21,14 @@ import (
 
 func (a *Agent) secHandlers() map[string]handlerFn {
 	return map[string]handlerFn{
-		"av.status":    a.cmdAVStatus,
-		"av.scan":      a.cmdAVScan,
-		"av.update":    a.cmdAVUpdate,
-		"av.threats":   a.cmdAVThreats,
-		"edr.snapshot": a.cmdEDRSnapshot,
-		"edr.isolate":  a.cmdEDRIsolate,
-		"edr.release":  a.cmdEDRRelease,
+		"av.status":      a.cmdAVStatus,
+		"av.scan":        a.cmdAVScan,
+		"av.update":      a.cmdAVUpdate,
+		"av.threats":     a.cmdAVThreats,
+		"edr.snapshot":   a.cmdEDRSnapshot,
+		"edr.isolate":    a.cmdEDRIsolate,
+		"edr.release":    a.cmdEDRRelease,
+		"module.install": a.cmdModuleInstall,
 	}
 }
 

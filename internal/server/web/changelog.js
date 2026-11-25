@@ -1,6 +1,9 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.5', date: '2026-11-25', title: 'Set up components now works on up-to-date agents', fixed: [
+    'Set up components and the automatic install when a plan is assigned failed with unknown command on agents that were fully up to date. The agent did not know the command. It does now.',
+  ] },
   { v: '1.0.4', date: '2026-11-25', title: 'Change logs in the console, hourly update checks', new: [
     'Settings → Updates → Versions and release logs now shows the real change log of every version, not a link.',
   ], better: [
