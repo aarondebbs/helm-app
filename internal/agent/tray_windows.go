@@ -175,8 +175,11 @@ func (t *trayApp) view() (state, headline string, icon int) {
 func (t *trayApp) tooltip() string {
 	_, head, _ := t.view()
 	t.mu.Lock()
-	org := t.st.Org
+	org, unread := t.st.Org, t.st.ChatUnread
 	t.mu.Unlock()
+	if unread > 0 {
+		head += fmt.Sprintf("\n%d new message(s) from support", unread)
+	}
 	if org != "" {
 		return "Helm · " + org + "\n" + head
 	}

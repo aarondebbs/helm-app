@@ -223,3 +223,15 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request, sess *se
 	go s.chatFlush()
 	writeJSON(w, 200, m)
 }
+
+// chatSeen records that the person at the PC has opened the conversation: delivered administrator messages show as seen.
+func (s *Server) chatSeen(id string) {
+	s.db.update(func(d *dbData) {
+		l := d.Chat[id]
+		for i := range l {
+			if l[i].From == "admin" && l[i].Sent {
+				l[i].Read = true
+			}
+		}
+	})
+}

@@ -698,7 +698,9 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 				s.supportRequest(dev.ID, f.Msg, ip)
 			}
 		case proto.TChat:
-			if a.approved.Load() {
+			if a.approved.Load() && f.ID == "seen" {
+				s.chatSeen(dev.ID)
+			} else if a.approved.Load() {
 				s.chatFromUser(dev.ID, dev.Name, f.Msg)
 			}
 		case proto.TOpenFail:

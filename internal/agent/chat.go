@@ -109,6 +109,7 @@ func (a *Agent) chatRoutes(mux *http.ServeMux, host string) {
 		a.stMu.Unlock()
 		if unread != 0 {
 			a.writeStatus()
+			a.sendFrame(proto.Frame{T: proto.TChat, ID: "seen"}) // lets the console show "seen"
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"messages": msgs, "online": online, "enabled": sup, "org": title})

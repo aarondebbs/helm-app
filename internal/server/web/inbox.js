@@ -31,7 +31,7 @@ function chatThread(id, name, opt) {
     for (const m of r.messages) {
       const dl = chatDay(m.at); if (dl !== day) { day = dl; log.append(h('div', { class: 'bday' }, dl)); }
       log.append(h('div', { class: 'bubble ' + m.from }, h('div', { class: 'btext' }, m.text),
-        h('div', { class: 'bmeta' }, chatClock(m.at) + (m.from === 'admin' ? (m.sent ? ' · delivered' : ' · waiting for the PC') : ''))));
+        h('div', { class: 'bmeta' }, chatClock(m.at) + (m.from === 'admin' ? (m.read ? ' · seen' : m.sent ? ' · delivered' : ' · waiting for the PC') : ''))));
     }
     if (near || force || !log.dataset.seen) { log.scrollTop = log.scrollHeight; log.dataset.seen = '1'; }
     if (opt.onRead) opt.onRead();

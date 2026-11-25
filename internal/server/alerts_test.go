@@ -220,3 +220,16 @@ func TestChatFlow(t *testing.T) {
 		t.Fatalf("purge kept %d messages, want 1", n)
 	}
 }
+
+func TestChatSeen(t *testing.T) {
+	s := newTestServer(t)
+	s.chatAdd("d1", "admin", "one")
+	s.chatSeen("d1") // not delivered yet: must stay unseen
+	s.db.update(func(d *dbData) { d.Chat["d1"][0].Sent = true })
+	s.chatSeen("d1")
+	var l []ChatMsg
+	s.db.view(func(d *dbData) { l = append(l, d.Chat["d1"]...) })
+	if !l[0].Read {
+		t.Fatal("a delivered message should show as seen")
+	}
+}
