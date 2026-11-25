@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -50,6 +51,7 @@ const (
 	tpmBottomAlign = 0x20
 	swShow         = 5
 	idSupport      = 2
+	idChat         = 4
 	idAbout        = 3
 )
 
@@ -120,6 +122,8 @@ type trayApp struct {
 	mu       sync.Mutex
 	st       TrayStatus
 	stale    bool
+	chatSeen int // highest chat sequence number already acted on
+	chatInit bool
 }
 
 var tray trayApp
@@ -182,6 +186,7 @@ func (t *trayApp) tooltip() string {
 // sync adds, updates or removes the icon so it matches the latest status.
 func (t *trayApp) sync() {
 	t.readStatus()
+	t.watchChat()
 	t.mu.Lock()
 	show := t.st.ShowTray || t.stale || t.st.Updated.IsZero()
 	t.mu.Unlock()
@@ -245,6 +250,11 @@ func (t *trayApp) menu() {
 			fl |= mfGrayed
 		}
 		add(fl, idSupport, "Request support")
+		cl := "Chat with support"
+		if s.ChatUnread > 0 {
+			cl += fmt.Sprintf(" (%d new)", s.ChatUnread)
+		}
+		add(fl, idChat, cl)
 	}
 	add(mfSeparator, 0, "")
 	add(mfString, idAbout, "About Helm Agent "+s.Version)
@@ -257,6 +267,8 @@ func (t *trayApp) menu() {
 	switch cmd {
 	case idSupport:
 		go t.requestSupport(s)
+	case idChat:
+		go openChatWindow(s)
 	case idAbout:
 		go messageBox("Helm Agent", fmt.Sprintf("Helm Agent %s\nThis PC: %s\nServer: %s\n\nHelm lets your administrator keep this PC updated and secure.\nThe agent never sees your files or passwords unless you start a remote session.", s.Version, s.Computer, s.Server))
 	}
@@ -371,4 +383,48 @@ func RunTray(args []string) int {
 		pDispatchMessage.Call(uintptr(unsafe.Pointer(&m)))
 	}
 	return 0
+}
+
+// watchChat opens the chat window when the administrator writes. The first status read only records the current
+// number, so restarting the tray does not pop up old messages.
+func (t *trayApp) watchChat() {
+	t.mu.Lock()
+	s := t.st
+	t.mu.Unlock()
+	if !t.chatInit {
+		t.chatInit, t.chatSeen = true, s.ChatSeq
+		return
+	}
+	if s.ChatSeq < t.chatSeen { // the service restarted
+		t.chatSeen = 0
+	}
+	if s.ChatSeq > t.chatSeen && s.ChatUnread > 0 {
+		t.chatSeen = s.ChatSeq
+		go openChatWindow(s)
+	}
+}
+
+// openChatWindow shows the chat page in a small window without browser controls (Edge's app mode), and falls back
+// to the default browser if Edge cannot be found.
+func openChatWindow(s TrayStatus) {
+	if s.Control == "" || s.ChatToken == "" {
+		messageBox("Helm Agent", "The agent is not ready yet. Try again in a moment.")
+		return
+	}
+	url := "http://" + s.Control + "/chat/" + s.ChatToken + "/"
+	for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles")} {
+		if base == "" {
+			continue
+		}
+		exe := base + `\Microsoft\Edge\Application\msedge.exe`
+		if _, err := os.Stat(exe); err == nil {
+			dir := os.Getenv("LOCALAPPDATA") + `\Helm\chat-profile`
+			cmd := exec.Command(exe, "--app="+url, "--window-size=400,560", "--user-data-dir="+dir, "--no-first-run", "--disable-extensions")
+			if cmd.Start() == nil {
+				go cmd.Wait()
+				return
+			}
+		}
+	}
+	pShellEx.Call(0, uintptr(unsafe.Pointer(wstr("open"))), uintptr(unsafe.Pointer(wstr(url))), 0, 0, swShow)
 }

@@ -113,3 +113,9 @@ were compiled and statically checked, but never run on Windows during developmen
 
 - [ ] Drag a file onto the remote screen: it appears in the chosen folder on the PC; a second drop of the same name asks before overwriting.
 - [ ] A PC with a pending restart shows the banner on Overview and a *Restart pending* alert.
+
+## 0.13.0
+
+- [ ] Tray menu shows *Chat with support*; clicking it opens a small Edge app window; Send reaches the Inbox.
+- [ ] A message from the console opens the window by itself within ~5 seconds and the menu shows "(1 new)" until it is read.
+- [ ] With Edge removed, the chat opens in the default browser.

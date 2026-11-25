@@ -1,8 +1,8 @@
 'use strict';
 /* Helm admin UI: device detail view (loaded after app.js). */
 
-const TABS = [['overview', 'Overview'], ['security', 'Security'], ['software', 'Software'], ['updates', 'Updates'], ['processes', 'Processes'], ['services', 'Services'],
-  ['terminal', 'Terminal'], ['files', 'Files'], ['screen', 'Remote screen'], ['events', 'Event logs'], ['tools', 'Tools'], ['jobs', 'History']];
+const TABS = [['overview', 'Overview'], ['screen', 'Remote screen'], ['files', 'Files'], ['chat', 'Chat'], ['updates', 'Updates'], ['security', 'Security'], ['software', 'Software'],
+  ['processes', 'Processes'], ['services', 'Services'], ['terminal', 'Terminal'], ['events', 'Event logs'], ['tools', 'Tools'], ['jobs', 'History']];
 const isLinux = d => !!(d && d.hello && (d.hello.os === 'linux' || d.hello.os === 'darwin')); // no remote screen, Logs instead of Event logs
 const tabsFor = d => TABS.filter(([k]) => !(isLinux(d) && k === 'screen')).map(([k, l]) => [k, isLinux(d) && k === 'events' ? 'Logs' : l]);
 
@@ -22,7 +22,7 @@ async function viewDevice(id, tab) {
   const drawHead = () => {
     clear(head).append(
       h('div', { class: 'pagehead', style: { marginBottom: '8px' } },
-        h('div', null, h('a', { href: '#/devices', class: 'crumb' }, '← Devices'),
+        h('div', null, h('a', { href: '#/devices', class: 'crumb' }, '← PCs'),
           h('div', { class: 'row' }, h('h1', { style: { margin: 0 } }, dev.name), deviceChip(dev), scoreBadge(dev.security)),
           h('div', { class: 'row tight', style: { marginTop: '6px' } }, dev.group ? h('span', { class: 'tag group' }, dev.group) : null, tagNodes(dev.tags),
             h('span', { class: 'muted' }, [osText(dev), dev.online && dev.stats && dev.stats.user ? '👤 ' + dev.stats.user + (dev.stats.userPresent ? '' : ' (not at the PC)') : ''].filter(Boolean).join(' · ')))),
@@ -37,7 +37,7 @@ async function viewDevice(id, tab) {
     clear(body);
     if (!dev.approved) { body.append(h('div', { class: 'panel' }, 'Approve this PC to manage it. Enrolled via "' + dev.via + '" from ' + dev.lastIp + '.')); return; }
     const fn = { overview: tabOverview, updates: tabUpdates, processes: tabProcesses, services: tabServices, terminal: tabTerminal,
-      files: tabFiles, screen: tabScreen, events: tabEvents, tools: tabTools, jobs: tabJobs, security: tabSecurity, software: tabSoftware }[tab];
+      files: tabFiles, chat: tabChat, screen: tabScreen, events: tabEvents, tools: tabTools, jobs: tabJobs, security: tabSecurity, software: tabSoftware }[tab];
     if (!fn) { body.append('Unknown tab'); return; }
     fn(body, dev, id);
   };

@@ -233,6 +233,8 @@ const ICON = {
   pulse: 'M3 12h4l3-8 4 16 3-8h4',
   disk: 'M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   download: 'M12 3v12M7 10l5 5 5-5M4 21h16',
+  chat: 'M21 12a8 8 0 01-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1121 12z',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
 };
 function icon(name) { return svg('svg', { viewBox: '0 0 24 24', class: 'ico', 'aria-hidden': 'true' }, svg('path', { d: ICON[name] || '' })); }
 
@@ -381,16 +383,22 @@ const LOGO = () => {
 };
 
 const NAV = [
-  ['Overview', [['#/', 'Dashboard', 'dash', 'dashboard'], ['#/devices', 'Devices', 'devices', 'devices']]],
-  ['Protect', [['#/security', 'Security', 'shield', 'security'], ['#/alerts', 'Alerts', 'bell', 'alerts']]],
-  ['Manage', [['#/software', 'Software', 'box', 'software'], ['#/automation', 'Automation', 'zap', 'automation'], ['#/sessions', 'Sessions', 'video', 'sessions'], ['#/network', 'Network', 'net', 'network']]],
-  ['Admin', [['#/reports', 'Reports', 'file', 'reports'], ['#/enroll', 'Add a PC', 'plus', 'enroll'], ['#/activity', 'Activity log', 'list', 'activity'], ['#/settings', 'Settings', 'gear', 'settings']]],
+  ['Work', [['#/', 'Home', 'dash', 'dashboard'], ['#/devices', 'PCs', 'devices', 'devices'], ['#/inbox', 'Inbox', 'chat', 'inbox'], ['#/alerts', 'Alerts', 'bell', 'alerts']]],
+  ['Fleet', [['#/security', 'Security', 'shield', 'security'], ['#/software', 'Software', 'box', 'software'], ['#/automation', 'Automation', 'zap', 'automation'], ['#/network', 'Network', 'net', 'network'], ['#/sessions', 'Sessions', 'video', 'sessions']]],
+  ['Admin', [['#/enroll', 'Add a PC', 'plus', 'enroll'], ['#/reports', 'Reports', 'file', 'reports'], ['#/activity', 'Activity log', 'list', 'activity'], ['#/settings', 'Settings', 'gear', 'settings']]],
 ];
+// Bottom bar on phones: the four places used most, and More for everything else.
+const TABBAR = [['#/', 'Home', 'dash', 'dashboard'], ['#/devices', 'PCs', 'devices', 'devices'], ['#/inbox', 'Inbox', 'chat', 'inbox'], ['#/alerts', 'Alerts', 'bell', 'alerts']];
 
-let alertBadge = null;
-function setAlertCount(n) { S.alerts = n; if (alertBadge) { alertBadge.textContent = n > 99 ? '99+' : String(n); alertBadge.classList.toggle('hidden', !n); } }
+const badges = { alerts: [], chat: [] };
+function paintBadges() {
+  for (const [k, n] of [['alerts', S.alerts], ['chat', S.chat || 0]]) badges[k].forEach(b => { if (!b.isConnected) return; b.textContent = n > 99 ? '99+' : String(n); b.classList.toggle('hidden', !n); });
+}
+function setAlertCount(n) { S.alerts = n; paintBadges(); }
+function setChatCount(n) { S.chat = n; paintBadges(); }
 async function refreshAlertCount() {
   try { const a = await api('GET', '/api/alerts'); setAlertCount(a.filter(x => isZero(x.resolved) && !x.acked).length); } catch (e) { /* ignore */ }
+  try { const c = await api('GET', '/api/chat'); setChatCount(c.unread); } catch (e) { /* ignore */ }
 }
 
 function globalSearch() {
@@ -441,19 +449,25 @@ function userMenu() {
 
 function shell(active, content) {
   const app = clear($('#app'));
+  badges.alerts = []; badges.chat = [];
+  const badge = key => { const b = h('span', { class: 'count hidden' }); badges[key].push(b); return b; };
   const side = h('aside', { class: 'sidebar', id: 'sidebar' },
     h('div', { class: 'brand' }, LOGO(), h('span', null, 'Helm')),
     NAV.map(([group, links]) => [h('div', { class: 'navgroup' }, group), links.map(([href, label, ic, key]) => {
       const a = h('a', { href, class: 'navlink' + (active === key ? ' active' : ''), onclick: () => side.classList.remove('open') }, icon(ic), label);
-      if (key === 'alerts') { alertBadge = h('span', { class: 'count' + (S.alerts ? '' : ' hidden') }, String(S.alerts)); a.append(alertBadge); }
+      if (key === 'alerts' || key === 'inbox') a.append(badge(key === 'alerts' ? 'alerts' : 'chat'));
       return a;
     })]),
     h('div', { class: 'sidefoot' }, h('span', null, 'Helm console'), h('span', { id: 'ver' }, S.version ? 'v' + S.version : '')));
   const bodyEl = h('div', { class: 'container' }, content);
-  app.append(h('div', { class: 'app' }, side, h('div', { class: 'main' },
+  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Main' },
+    TABBAR.map(([href, label, ic, key]) => { const a = h('a', { href, class: 'tab' + (active === key ? ' active' : '') }, h('span', { class: 'tico' }, icon(ic), key === 'alerts' || key === 'inbox' ? badge(key === 'alerts' ? 'alerts' : 'chat') : null), h('span', null, label)); return a; }),
+    h('button', { class: 'tab', 'aria-label': 'More', onclick: () => side.classList.toggle('open') }, h('span', { class: 'tico' }, icon('more')), h('span', null, 'More')));
+  const scrim = h('div', { class: 'scrim', onclick: () => side.classList.remove('open') });
+  app.append(h('div', { class: 'app' }, side, scrim, h('div', { class: 'main' },
     h('div', { class: 'topbar' }, h('button', { class: 'ghost icon menu-btn', 'aria-label': 'Menu', onclick: () => side.classList.toggle('open') }, icon('menu')), globalSearch(), h('div', { class: 'spacer' }), h('a', { class: 'btn primary', href: '#/enroll' }, icon('plus'), 'Add a PC'), themeButton(), userMenu()),
-    bodyEl)));
-  refreshAlertCount();
+    bodyEl), tabbar));
+  paintBadges(); refreshAlertCount();
   return bodyEl;
 }
 
@@ -647,52 +661,6 @@ const osKey = d => (d && d.hello && d.hello.os) || 'windows';
 const osBadge = d => h('span', { class: 'osbadge', title: osKey(d) }, OS_LABEL[osKey(d)] || osKey(d));
 const osText = d => { const hl = d.hello || {}; return [hl.osVersion || hl.os, hl.edition].filter(Boolean).join(' · '); };
 
-// Acronis-style quick view: a right-hand drawer with the essentials and the most common actions.
-function openDrawer(d, refresh) {
-  const close = () => { bd.remove(); dr.remove(); document.removeEventListener('keydown', onKey); };
-  const onKey = e => { if (e.key === 'Escape') close(); };
-  const st = d.stats, hello = d.hello || {}, sec = d.security;
-  const cDisk = st && st.disks && (st.disks.find(x => /^(C:|\/$)/i.test(x.name)) || st.disks[0]);
-  const kv = rows => h('dl', { class: 'kv' }, rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => [h('dt', null, k), h('dd', null, v)]));
-  const metric = (label, p) => h('div', { class: 'metric', style: { gridTemplateColumns: '70px 1fr 42px' } }, h('span', null, label), barNode(p), h('b', null, p + '%'));
-  const dr = h('aside', { class: 'drawer', role: 'dialog', 'aria-label': d.name },
-    h('header', null, h('div', { style: { minWidth: 0 } }, h('div', { class: 'row tight' }, h('span', { class: 'statusdot' + (d.online ? ' on' : '') }), h('h2', { style: { margin: 0, wordBreak: 'break-word' } }, d.name)),
-      h('div', { class: 'muted', style: { marginTop: '4px' } }, osBadge(d), osText(d))),
-      h('div', { class: 'row tight' }, scoreBadge(sec), h('button', { class: 'iconbtn', 'aria-label': 'Close', onclick: close }, icon('x')))),
-    h('div', { class: 'dbody' },
-      h('div', null, h('h4', null, 'Status'), kv([['State', d.approved ? (d.online ? 'Online' : 'Offline · seen ' + fmtAgo(d.lastSeen)) : 'Pending approval'], ['User', (st && st.user) || hello.user], ['Group', d.group], ['Tags', (d.tags || []).join(', ')],
-        ['IP', (hello.ips || [])[0] || d.lastIp], ['Agent', hello.version], ['Uptime', st && st.uptimeSec ? fmtDur(st.uptimeSec) : '']])),
-      d.online && st ? h('div', null, h('h4', null, 'Live'), h('div', { class: 'stack', style: { gap: '8px' } }, metric('CPU', Math.round(st.cpu)), metric('Memory', pct(st.memUsed, st.memTotal)),
-        cDisk ? metric('Disk ' + cDisk.name, pct(cDisk.total - cDisk.free, cDisk.total)) : null)) : null,
-      h('div', null, h('h4', null, 'Security'), sec && sec.counts ? h('div', { class: 'stack', style: { gap: '8px' } }, sevBar(sec.counts), h('div', { class: 'muted small-text' }, SEV_ORDER.map(k => (sec.counts[k] || 0) + ' ' + k).join(' · ')), h('div', { class: 'muted small-text' }, 'Last scan ' + (sec.status === 'running' ? 'running…' : fmtAgo(sec.at)))) : h('div', { class: 'muted' }, 'Not scanned yet.')),
-      d.notes ? h('div', null, h('h4', null, 'Notes'), h('div', { class: 'muted' }, d.notes)) : null),
-    h('footer', null, h('a', { class: 'btn primary', href: '#/d/' + d.id, onclick: close }, 'Open details'),
-      d.online ? actionButton('Scan now', async () => { await api('POST', `/api/devices/${d.id}/scan`, {}); toast('Scan started on ' + d.name, 'ok'); }) : null,
-      d.online ? h('a', { class: 'btn', href: '#/d/' + d.id + '/terminal', onclick: close }, 'Terminal') : null,
-      h('a', { class: 'btn', href: '#/d/' + d.id + '/security', onclick: close }, 'Security')));
-  const bd = h('div', { class: 'drawer-bd', onclick: close });
-  document.body.append(bd, dr); document.addEventListener('keydown', onKey);
-  dr.querySelector('button.iconbtn').focus();
-  if (refresh) onLeave(close);
-}
-
-function deviceCard(d, selected, onSel) {
-  const st = d.stats, hello = d.hello || {};
-  const cDisk = st && st.disks && (st.disks.find(x => /^C:/i.test(x.name)) || st.disks[0]);
-  return h('div', { class: 'card', onclick: () => openDrawer(d, true) },
-    h('div', { class: 'devtop' },
-      h('div', { style: { minWidth: 0 } }, h('div', { class: 'row tight' }, h('span', { class: 'statusdot' + (d.online ? ' on' : '') }), h('div', { class: 'title' }, d.name)), h('div', { class: 'meta' }, osBadge(d), osText(d))),
-      h('div', { class: 'row tight' }, scoreBadge(d.security),
-        h('input', { type: 'checkbox', checked: selected.has(d.id), title: 'Select', 'aria-label': 'Select ' + d.name, onclick: e => e.stopPropagation(), onchange: e => onSel(d.id, e.target.checked) }))),
-    h('div', null, d.group ? h('span', { class: 'tag group' }, d.group) : null, tagNodes(d.tags), !d.online ? h('span', { class: 'muted small-text' }, ' ' + fmtAgo(d.lastSeen)) : null),
-    h('div', { class: 'meta' }, [st && st.user ? '👤 ' + st.user : (hello.user ? 'Last user: ' + hello.user : ''), (hello.ips || [])[0]].filter(Boolean).join(' · ')),
-    d.online && st ? h('div', { class: 'stack', style: { gap: '5px' } },
-      h('div', { class: 'metric' }, h('span', null, 'CPU'), barNode(st.cpu), h('b', null, Math.round(st.cpu) + '%')),
-      h('div', { class: 'metric' }, h('span', null, 'Memory'), barNode(pct(st.memUsed, st.memTotal)), h('b', null, pct(st.memUsed, st.memTotal) + '%')),
-      cDisk ? h('div', { class: 'metric' }, h('span', null, 'Disk ' + cDisk.name), barNode(pct(cDisk.total - cDisk.free, cDisk.total)), h('b', null, pct(cDisk.total - cDisk.free, cDisk.total) + '%')) : null) : null,
-    d.security && d.security.counts && (d.security.counts.critical + d.security.counts.high) > 0 ? h('div', { class: 'row tight' }, sevBar(d.security.counts), h('span', { class: 'muted small-text nowrap' }, (d.security.counts.critical + d.security.counts.high) + ' serious')) : null);
-}
-
 route(/^\/devices$/, viewDevices);
 function viewDevices() {
   const selected = new Set();
@@ -703,7 +671,6 @@ function viewDevices() {
   const pills = h('div', { class: 'pills' });
   const groupSel = h('select', { 'aria-label': 'Group' }), tagSel = h('select', { 'aria-label': 'Tag' });
   const sortSel = h('select', { 'aria-label': 'Sort' }, [['name', 'Sort: name'], ['status', 'Sort: status'], ['score', 'Sort: security (worst first)'], ['seen', 'Sort: last seen']].map(([v, l]) => h('option', { value: v, selected: v === f.sort }, l)));
-  const viewSeg = segmented([['list', 'List'], ['grid', 'Cards']], f.view, v => { f.view = v; save(); draw(true); });
   const save = () => store.set('devfilter', f);
   const approved = () => devices.filter(d => d.approved);
 
@@ -768,18 +735,39 @@ function viewDevices() {
   };
   const onSel = (id, on) => { on ? selected.add(id) : selected.delete(id); renderBulk(); };
 
+  const expanded = new Set();
+  const pcDetail = d => {
+    const st = d.stats, hello = d.hello || {}, sec = d.security;
+    const cDisk = st && st.disks && (st.disks.find(x => /^(C:|\/$)/i.test(x.name)) || st.disks[0]);
+    const kv = rows => h('dl', { class: 'kv' }, rows.filter(r => r[1] != null && r[1] !== '').map(([k, v]) => [h('dt', null, k), h('dd', null, v)]));
+    const metric = (label, p) => h('div', { class: 'metric', style: { gridTemplateColumns: '64px 1fr 40px' } }, h('span', null, label), barNode(p), h('b', null, p + '%'));
+    return h('div', { class: 'pcx' },
+      h('div', null, kv([['State', d.online ? 'Online' : 'Offline, seen ' + fmtAgo(d.lastSeen)], ['User', (st && st.user) || hello.user], ['Address', (hello.ips || [])[0] || d.lastIp], ['Agent', hello.version], ['Up for', st && st.uptimeSec ? fmtDur(st.uptimeSec) : '']]),
+        d.notes ? h('p', { class: 'muted small-text', style: { margin: '10px 0 0' } }, d.notes) : null),
+      h('div', null, d.online && st ? h('div', { class: 'stack', style: { gap: '8px' } }, metric('CPU', Math.round(st.cpu)), metric('Memory', pct(st.memUsed, st.memTotal)), cDisk ? metric('Disk ' + cDisk.name, pct(cDisk.total - cDisk.free, cDisk.total)) : null) : h('p', { class: 'muted' }, 'Live figures appear when the PC is online.'),
+        sec && sec.counts ? h('div', { style: { marginTop: '12px' } }, sevBar(sec.counts), h('div', { class: 'muted small-text', style: { marginTop: '4px' } }, SEV_ORDER.map(k => (sec.counts[k] || 0) + ' ' + k).join(' · '))) : null),
+      h('div', { class: 'pcx-acts' },
+        h('a', { class: 'btn primary', href: '#/d/' + d.id }, 'Open PC'),
+        d.online && osKey(d) === 'windows' ? h('a', { class: 'btn', href: '#/d/' + d.id + '/screen' }, 'Remote screen') : null,
+        h('a', { class: 'btn', href: '#/inbox/' + d.id }, icon('chat'), 'Chat'),
+        d.online ? h('a', { class: 'btn', href: '#/d/' + d.id + '/terminal' }, 'Terminal') : null,
+        d.online ? actionButton('Scan now', async () => { await api('POST', `/api/devices/${d.id}/scan`, {}); toast('Scan started on ' + d.name, 'ok'); }) : null));
+  };
   const listRow = d => {
-    const st = d.stats, hello = d.hello || {};
-    return h('tr', { class: 'clickable', onclick: () => openDrawer(d, true) },
-      h('td', { class: 'checkcell', onclick: e => e.stopPropagation() }, h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': 'Select ' + d.name, onchange: e => onSel(d.id, e.target.checked) })),
-      h('td', null, h('div', { class: 'row tight' }, h('span', { class: 'statusdot' + (d.online ? ' on' : '') }), h('a', { href: '#/d/' + d.id, onclick: e => e.stopPropagation() }, h('b', null, d.name))), h('div', null, tagNodes(d.tags))),
-      h('td', null, d.group ? h('span', { class: 'tag group' }, d.group) : h('span', { class: 'muted' }, '–')),
-      h('td', { class: 'muted' }, osBadge(d), osText(d)),
-      h('td', null, (st && st.user) || hello.user || ''),
-      h('td', { class: 'num' }, d.online && st ? Math.round(st.cpu) + '%' : '–'),
-      h('td', { class: 'num' }, d.online && st ? pct(st.memUsed, st.memTotal) + '%' : '–'),
-      h('td', null, h('div', { class: 'row tight' }, scoreBadge(d.security), d.security ? sevBar(d.security.counts) : null)),
-      h('td', { class: 'muted nowrap' }, d.online ? 'now' : fmtAgo(d.lastSeen)));
+    const st = d.stats, hello = d.hello || {}, open = expanded.has(d.id);
+    const who = (st && st.user) || hello.user || '';
+    const item = h('div', { class: 'pcitem' + (open ? ' open' : '') });
+    const toggleOpen = () => { open ? expanded.delete(d.id) : expanded.add(d.id); draw(true); };
+    item.append(h('div', { class: 'pcrow' },
+      h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: selected.has(d.id), 'aria-label': 'Select ' + d.name, onchange: e => onSel(d.id, e.target.checked) })),
+      h('button', { class: 'pc-main', 'aria-expanded': String(open), onclick: toggleOpen },
+        h('span', { class: 'statusdot' + (d.online ? ' on' : '') }),
+        h('span', { class: 'pc-name' }, h('b', null, d.name), h('span', { class: 'muted small-text' }, [who, osText(d)].filter(Boolean).join(' · ')))),
+      h('div', { class: 'pc-tags' }, d.group ? h('span', { class: 'tag group' }, d.group) : null, tagNodes(d.tags)),
+      h('div', { class: 'pc-load' }, d.online && st ? [h('span', null, 'CPU ', h('b', null, Math.round(st.cpu) + '%')), h('span', null, 'Mem ', h('b', null, pct(st.memUsed, st.memTotal) + '%'))] : h('span', { class: 'muted' }, 'Offline, ' + fmtAgo(d.lastSeen))),
+      h('div', { class: 'pc-score' }, scoreBadge(d.security))));
+    if (open) item.append(pcDetail(d));
+    return item;
   };
 
   const draw = force => {
@@ -797,20 +785,18 @@ function viewDevices() {
     clear(content);
     if (!approved().length) { content.append(h('div', { class: 'panel' }, emptyState('🖥️', 'No PCs yet', 'Create an enrollment token and install command to add your first PC.', h('a', { class: 'btn primary', href: '#/enroll' }, 'Add a PC')))); return; }
     if (!r.length) { content.append(h('div', { class: 'panel' }, emptyState('🔎', 'No PCs match', 'Try a different search or clear the filters.'))); return; }
-    if (f.view === 'list') {
-      const allOn = r.every(d => selected.has(d.id));
-      content.append(h('div', { class: 'panel flush' }, h('div', { class: 'tablewrap' }, h('table', null,
-        h('thead', null, h('tr', null, h('th', { class: 'checkcell' }, h('input', { type: 'checkbox', checked: allOn, 'aria-label': 'Select all', onchange: e => { r.forEach(d => e.target.checked ? selected.add(d.id) : selected.delete(d.id)); renderBulk(); draw(true); } })),
-          ['Device', 'Group', 'Operating system', 'User'].map(x => h('th', null, x)), h('th', { class: 'num' }, 'CPU'), h('th', { class: 'num' }, 'Memory'), h('th', null, 'Security'), h('th', null, 'Seen'))),
-        h('tbody', null, r.map(listRow))))));
-    } else content.append(h('div', { class: 'grid' }, r.map(d => deviceCard(d, selected, onSel))));
+    const allOn = r.every(d => selected.has(d.id));
+    content.append(h('div', { class: 'pclist' },
+      h('div', { class: 'pchead' }, h('label', { class: 'pc-check' }, h('input', { type: 'checkbox', checked: allOn, 'aria-label': 'Select all', onchange: e => { r.forEach(d => e.target.checked ? selected.add(d.id) : selected.delete(d.id)); renderBulk(); draw(true); } })),
+        h('span', { class: 'pc-main' }, plural(r.length, 'PC')), h('span', { class: 'pc-tags' }, 'Group'), h('span', { class: 'pc-load' }, 'Load'), h('span', { class: 'pc-score' }, 'Security')),
+      r.map(listRow)));
   };
   const refresh = async () => { try { devices = await getDevices(true); draw(); } catch (e) { /* handled by api() */ } };
 
   shell('devices', [
-    pageHead('Devices', 'Every PC you manage', h('a', { class: 'btn primary', href: '#/enroll' }, icon('plus'), 'Add a PC')),
+    pageHead('PCs', 'Every PC you manage. Select one to see more.'),
     pendingBox,
-    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }, search), groupSel, tagSel, sortSel, viewSeg),
+    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }, search), groupSel, tagSel, sortSel),
     h('div', { style: { marginBottom: '14px' } }, pills),
     content, bulk]);
   refresh(); every(5000, refresh);

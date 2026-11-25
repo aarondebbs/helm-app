@@ -15,6 +15,7 @@ const (
 	TRevoked  = "revoked"  // server -> agent
 	TConfig   = "config"   // server -> agent: deploy profile (Data is a Config)
 	TSupport  = "support"  // agent -> server: the person at the PC asked for help (Msg)
+	TChat     = "chat"     // both ways: a chat message (Msg); server -> agent carries the message ID in ID
 	TOpenFail = "openfail" // agent -> server: refused a TOpen (SID, Err)
 )
 

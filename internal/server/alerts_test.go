@@ -192,3 +192,31 @@ func TestValidateEmail(t *testing.T) {
 		t.Errorf("header not cleaned: %q", got)
 	}
 }
+
+func TestChatFlow(t *testing.T) {
+	s := newTestServer(t)
+	m := s.chatAdd("d1", "admin", "hello")
+	if m.Sent {
+		t.Fatal("new admin message must start undelivered")
+	}
+	s.chatFromUser("d1", "PC", "  hi\x00 there  ")
+	var got []ChatMsg
+	s.db.view(func(d *dbData) { got = append(got, d.Chat["d1"]...) })
+	if len(got) != 2 || got[1].Text != "hi there" || got[1].From != "user" {
+		t.Fatalf("unexpected conversation: %+v", got)
+	}
+	for i := 0; i < 20; i++ {
+		s.chatFromUser("d2", "PC2", "spam")
+	}
+	n := 0
+	s.db.view(func(d *dbData) { n = len(d.Chat["d2"]) })
+	if n != 10 {
+		t.Fatalf("rate limit let %d messages through, want 10", n)
+	}
+	s.db.update(func(d *dbData) { d.Chat["d1"][0].At = time.Now().Add(-31 * 24 * time.Hour) })
+	s.chatPurge()
+	s.db.view(func(d *dbData) { n = len(d.Chat["d1"]) })
+	if n != 1 {
+		t.Fatalf("purge kept %d messages, want 1", n)
+	}
+}

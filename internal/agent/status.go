@@ -16,12 +16,16 @@ import (
 // It holds nothing secret: no token, no device secret.
 type TrayStatus struct {
 	proto.Config
-	Computer string    `json:"computer"`
-	Version  string    `json:"version"`
-	State    string    `json:"state"` // starting | connecting | pending | connected | offline
-	Server   string    `json:"server"`
-	Control  string    `json:"control,omitempty"` // loopback address of the support-request endpoint
-	Updated  time.Time `json:"updated"`
+	Computer string `json:"computer"`
+	Version  string `json:"version"`
+	State    string `json:"state"` // starting | connecting | pending | connected | offline
+	Server   string `json:"server"`
+	Control  string `json:"control,omitempty"` // loopback address of the support-request endpoint
+	// Chat with support: the tray opens http://<Control>/chat/<ChatToken>/ in a small window and watches ChatSeq.
+	ChatToken  string    `json:"chatToken,omitempty"`
+	ChatSeq    int       `json:"chatSeq,omitempty"`    // grows with every message from the administrator
+	ChatUnread int       `json:"chatUnread,omitempty"` // messages from the administrator not yet shown
+	Updated    time.Time `json:"updated"`
 }
 
 // PublicDir is the folder the tray reads. It is separate from the agent's private data folder.
@@ -89,6 +93,7 @@ func (a *Agent) serveControl(ctx context.Context) {
 	}
 	a.stMu.Lock()
 	a.tray.Control = ln.Addr().String()
+	a.tray.ChatToken = randToken()
 	a.stMu.Unlock()
 	a.writeStatus()
 	var last time.Time
@@ -118,6 +123,7 @@ func (a *Agent) serveControl(ctx context.Context) {
 		a.sendFrame(proto.Frame{T: proto.TSupport, Msg: req.Msg})
 		w.WriteHeader(http.StatusNoContent)
 	})
+	a.chatRoutes(mux, ln.Addr().String())
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { <-ctx.Done(); _ = srv.Close() }()
 	_ = srv.Serve(ln)

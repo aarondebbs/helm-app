@@ -61,6 +61,10 @@ type Agent struct {
 	stMu sync.Mutex
 	tray TrayStatus
 
+	chatMu   sync.Mutex
+	chat     []chatLine
+	chatLast time.Time // last message sent from this PC, for rate limiting
+
 	cmdSem   chan struct{}
 	updMu    sync.Mutex // serialises Windows Update / winget / self-update operations
 	screenMu sync.Mutex // one screen session at a time
@@ -291,6 +295,8 @@ func (a *Agent) session(ctx context.Context) error {
 			if json.Unmarshal(f.Data, &cfg) == nil {
 				a.setConfig(cfg)
 			}
+		case proto.TChat:
+			a.chatIncoming(f.ID, f.Msg)
 		case proto.TApproved:
 			a.log.Printf("approved by administrator")
 			a.setState("connected")

@@ -697,6 +697,10 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 			if a.approved.Load() { // a PC nobody has approved yet cannot raise alerts
 				s.supportRequest(dev.ID, f.Msg, ip)
 			}
+		case proto.TChat:
+			if a.approved.Load() {
+				s.chatFromUser(dev.ID, dev.Name, f.Msg)
+			}
 		case proto.TOpenFail:
 			s.hub.refuse(f.SID, f.Err)
 		}

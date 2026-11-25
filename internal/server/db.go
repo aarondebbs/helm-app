@@ -50,6 +50,7 @@ const (
 	RulePatches   = "patches"
 	RuleSupport   = "support_request"
 	RuleReboot    = "reboot_pending"
+	RuleChat      = "chat"
 )
 
 var ruleInfo = []struct{ ID, Title, Desc string }{
@@ -59,6 +60,7 @@ var ruleInfo = []struct{ ID, Title, Desc string }{
 	{RuleSecurity, "Critical or high security findings", "A scan found critical/high vulnerabilities or configuration problems."},
 	{RulePatches, "Security updates missing", "A scan found missing critical or important Windows updates."},
 	{RuleReboot, "Restart pending", "A PC has had a restart waiting (to finish installing updates) at its last scan."},
+	{RuleChat, "New chat message", "The person at a PC wrote to you from the Helm tray."},
 	{RuleSupport, "Support requested", "The person at a PC pressed Request support in the Helm tray menu."},
 }
 
@@ -190,6 +192,7 @@ type dbData struct {
 	NoFix     map[string]time.Time `json:"noFix,omitempty"`    // "deviceID|software" -> when an update was found to be unavailable
 	Tasks     []TaskRec            `json:"tasks,omitempty"`    // finished tasks of the last week
 	Patched   map[string]string    `json:"patched,omitempty"`  // device id -> date (YYYY-MM-DD) of its last window run
+	Chat      map[string][]ChatMsg `json:"chat,omitempty"`     // device id -> conversation (kept 30 days)
 }
 
 // AcceptRec records a finding the administrator has chosen to live with.
