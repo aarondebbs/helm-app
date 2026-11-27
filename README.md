@@ -253,8 +253,12 @@ could lock you out of a remote server (SSH settings, disk encryption) is offered
 
 With several monitors a picker lets you choose which one to watch and control. Send my clipboard and Get PC clipboard
 move plain text between your browser and the PC. The frame rate and quality you choose are ceilings: Helm lowers them by
-itself while the connection is slow and raises them again when it recovers. These features run only on Windows and have
-not yet been tried on real hardware; see docs/WINDOWS-TEST-CHECKLIST.md.
+itself while the connection is slow and raises them again when it recovers. These features run on Windows and, since
+1.0.14, on macOS (no multi-monitor picker there yet); neither has been tried on real hardware, see
+docs/WINDOWS-TEST-CHECKLIST.md.
+
+Since 1.0.15 the number of frames in flight is no longer fixed at two: it grows with the connection's round trip, so a
+distant link is no longer capped near 5 frames per second, and Helm slows down only when a queue builds up.
 
 Since 0.11.0 the viewer acknowledges every frame it draws, and the PC never has more than two frames in flight, so a slow
 link can no longer build up a queue of stale frames. Helm now measures the real round trip to your browser (not the local
@@ -280,7 +284,12 @@ backups, updating this server, and the sign-in and account settings.
 Hardware/OS inventory is collected from each online PC daily, stored on the server and shown on the device Overview (*Collect full inventory* refreshes). *Reports -> Hardware inventory* exports CSV.
 
 ## macOS agent (new, untested on real hardware)
-See `docs/MACOS.md`. Add a PC -> macOS gives a personalised script or a .pkg plus `helm-enroll.conf`.
+See `docs/MACOS.md`. Add a PC -> macOS gives a personalised script or a .pkg plus `helm-enroll.conf`. Download the
+enrollment file first, then open the package; without it the package installs but nothing enrolls (it now says so on the
+Mac). The package also installs a menu-bar icon that opens a status window, and **Remote screen** (needs Screen Recording
+and Accessibility allowed for Helm once, System Settings -> Privacy & Security). Without ClamAV, scans use Gatekeeper and
+XProtect on apps and installers. Wake-on-LAN works from sleep only, and wired is dependable where Wi-Fi often is not.
+There is no RDP on a Mac. iOS is not supported (it would need an Apple MDM push certificate).
 
 ## Antivirus false positives
 See `docs/ANTIVIRUS.md`.
@@ -293,7 +302,8 @@ Toggle in the top bar; follows the system setting until you choose.
 *Tools → Open RDP tunnel* opens a single-use listener on the Pi (ports 33890-33899, default bind `127.0.0.1`).
 To use it from your own machine either start the server with `-rdp-bind <Pi tailscale IP>` and point `mstsc` at
 `<that IP>:<port>`, or `ssh -L 3389:127.0.0.1:<port> pi@pi` and connect to `localhost`. The agent only ever forwards to the
-PC's own RDP port. Windows Home cannot host RDP – use the in-browser screen there.
+PC's own RDP port. Windows Home cannot host RDP – use the in-browser screen there. After opening the tunnel,
+**Download .rdp file** gives a ready file for Windows Remote Desktop; it is the fastest way to work on a PC.
 
 ## Security notes
 
