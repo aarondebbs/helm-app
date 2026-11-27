@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode/utf16"
@@ -342,33 +343,34 @@ type bitmapInfoHeader struct {
 }
 
 type capturer struct {
-	deskName string
-	deskH    uintptr
-	w, h     int // native screen size
-	sw, sh   int // streamed size
-	scale    int
-	quality  int
-	fps      int
-	dib      []byte // persistent capture bitmap memory, overwritten by every grab
-	dibDC    uintptr
-	dibBmp   uintptr
-	dibOld   uintptr
-	dibW     int
-	dibH     int
-	scaled   []byte // half-size copy, only used when scale is 2
-	cur      []byte // the frame to stream: dib itself, or scaled
-	prev     []byte // what the viewer already has
-	force    bool
-	ad       Adaptive
-	adMu     sync.Mutex // the sender goroutine records timings while the capture loop reads them
-	send     func(v any)
-	mons     []MonRect
-	mon      int // index into mons; only used when there is more than one monitor
-	vx, vy   int // virtual desktop origin and size, for mapping the pointer
-	vw, vh   int
-	flow     *FlowControl // frames in flight, acknowledged by the viewer
-	soft     SoftRegions  // regions sent as lower-quality JPEG, sharpened once the picture is still
-	changed  time.Time    // when the picture last changed
+	perfGrab, perfEnc, perfN atomic.Int64 // nanoseconds spent capturing / encoding and frames counted, for the stats line
+	deskName                 string
+	deskH                    uintptr
+	w, h                     int // native screen size
+	sw, sh                   int // streamed size
+	scale                    int
+	quality                  int
+	fps                      int
+	dib                      []byte // persistent capture bitmap memory, overwritten by every grab
+	dibDC                    uintptr
+	dibBmp                   uintptr
+	dibOld                   uintptr
+	dibW                     int
+	dibH                     int
+	scaled                   []byte // half-size copy, only used when scale is 2
+	cur                      []byte // the frame to stream: dib itself, or scaled
+	prev                     []byte // what the viewer already has
+	force                    bool
+	ad                       Adaptive
+	adMu                     sync.Mutex // the sender goroutine records timings while the capture loop reads them
+	send                     func(v any)
+	mons                     []MonRect
+	mon                      int // index into mons; only used when there is more than one monitor
+	vx, vy                   int // virtual desktop origin and size, for mapping the pointer
+	vw, vh                   int
+	flow                     *FlowControl // frames in flight, acknowledged by the viewer
+	soft                     SoftRegions  // regions sent as lower-quality JPEG, sharpened once the picture is still
+	changed                  time.Time    // when the picture last changed
 }
 
 // attach makes the calling thread use the desktop that currently receives input.
@@ -491,6 +493,7 @@ type encJob struct {
 // encodeAndSend turns a job into JPEG tiles and writes them. It runs in its own goroutine so the next frame can be
 // captured while this one is still being compressed and sent.
 func (cp *capturer) encodeAndSend(c *ws.Conn, job encJob) error {
+	encStart := time.Now()
 	tiles := make([]Tile, len(job.rects))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, max(1, runtime.NumCPU()))
@@ -505,6 +508,7 @@ func (cp *capturer) encodeAndSend(c *ws.Conn, job encJob) error {
 		}(i)
 	}
 	wg.Wait()
+	cp.perfEnc.Add(int64(time.Since(encStart)))
 	sendStart := time.Now()
 	for len(tiles) > 0 { // batches keep each WebSocket message modest
 		n, size := 0, 0
@@ -566,6 +570,7 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 	frames := 0
 	lastW, lastH := 0, 0
 	next := time.Now()
+	lastPerf := time.Now()
 	for ctx.Err() == nil {
 		select {
 		case <-failed:
@@ -624,10 +629,22 @@ func captureLoop(ctx context.Context, c *ws.Conn, in <-chan InputMsg, viewOnly b
 		if !cp.attach() {
 			continue
 		}
+		t0 := time.Now()
 		if err := cp.grab(); err != nil {
 			continue
 		}
 		cp.scaleFrame()
+		cp.perfGrab.Add(int64(time.Since(t0)))
+		cp.perfN.Add(1)
+		if time.Since(lastPerf) >= time.Second {
+			lastPerf = time.Now()
+			if n := cp.perfN.Swap(0); n > 0 {
+				cp.adMu.Lock()
+				win, floor := cp.ad.Window(), cp.ad.Floor()
+				cp.adMu.Unlock()
+				_ = sendJSON(c, map[string]any{"t": "perf", "grab": cp.perfGrab.Swap(0) / n / 1e6, "enc": cp.perfEnc.Swap(0) / n / 1e6, "win": win, "net": int(floor), "target": cp.fps})
+			}
+		}
 		if cp.sw != lastW || cp.sh != lastH {
 			lastW, lastH = cp.sw, cp.sh
 			cp.prev = nil

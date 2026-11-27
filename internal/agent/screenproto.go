@@ -234,6 +234,9 @@ func (a *Adaptive) ObserveRTT(d time.Duration) {
 	}
 }
 
+// Floor is the link's own round-trip delay in milliseconds (0 until measured).
+func (a *Adaptive) Floor() float64 { return a.floor }
+
 // Window is how many frames may be in flight: enough to keep the link busy for a whole round trip at the current rate.
 // With two frames and a 200 ms link the stream could never exceed 10 frames per second, however fast everything else is.
 func (a *Adaptive) Window() int {

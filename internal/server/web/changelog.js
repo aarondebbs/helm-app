@@ -1,6 +1,9 @@
 'use strict';
 /* Helm console: What's new. Newest first. Each entry lists what is New, Improved or Fixed in plain words. */
 const CHANGELOG = [
+  { v: '1.0.19', date: '2026-11-27', title: 'Remote screen: see what limits the speed', better: [
+    'The remote screen stats line now also shows what the PC is doing: how long a capture and an encode take, the connection\'s own delay, how many pictures are in flight and the target frame rate. Use it to see whether the PC, the picture size or the connection is the limit.',
+  ] },
   { v: '1.0.18', date: '2026-11-25', title: 'Helm icon opens a window', fixed: [
     'Clicking the Helm icon in the Windows taskbar (left or right click) or the Mac menu bar now always opens the status window. Before, a right-click still showed a plain popup menu.',
   ] },

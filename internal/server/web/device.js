@@ -465,7 +465,7 @@ function tabScreen(body, dev, id) {
   // live numbers for the stats line: frames and bytes per second, and how long the picture takes to answer an action
   const st = { frames: 0, bytes: 0, since: performance.now(), fps: 0, kbps: 0, resp: 0, acted: 0 };
   const stats = h('span', { class: 'muted small-text screenstats' });
-  const tickStats = () => { const n = performance.now(), dt = (n - st.since) / 1000; if (dt < 1) return; st.fps = Math.round(st.frames / dt); st.kbps = Math.round(st.bytes * 8 / dt / 1000); st.frames = 0; st.bytes = 0; st.since = n; stats.textContent = live ? st.fps + ' fps · ' + (st.kbps >= 1000 ? (st.kbps / 1000).toFixed(1) + ' Mbit/s' : st.kbps + ' kbit/s') + (st.resp ? ' · responds in ' + Math.round(st.resp) + ' ms' : '') : ''; };
+  const tickStats = () => { const n = performance.now(), dt = (n - st.since) / 1000; if (dt < 1) return; st.fps = Math.round(st.frames / dt); st.kbps = Math.round(st.bytes * 8 / dt / 1000); st.frames = 0; st.bytes = 0; st.since = n; stats.textContent = live ? st.fps + ' fps · ' + (st.kbps >= 1000 ? (st.kbps / 1000).toFixed(1) + ' Mbit/s' : st.kbps + ' kbit/s') + (st.resp ? ' · responds in ' + Math.round(st.resp) + ' ms' : '') + (st.perf ? ' · PC: capture ' + st.perf.grab + ' ms, encode ' + st.perf.enc + ' ms · link ' + st.perf.net + ' ms · ' + st.perf.win + ' in flight · target ' + st.perf.target + ' fps' : '') : ''; };
   every(1000, tickStats);
   const send = o => { if (ws && ws.readyState === 1 && live) { if (o.t === 'md' || o.t === 'kd' || o.t === 'wh') st.acted = performance.now(); ws.send(JSON.stringify(o)); } };
   const stop = () => { if (ws) { ws.close(); ws = null; } live = false; };
@@ -505,6 +505,7 @@ function tabScreen(body, dev, id) {
       if (typeof ev.data === 'string') {
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
         if (m.t === 'screen') { canvas.width = m.w; canvas.height = m.h; live = true; status.className = 'notice'; status.textContent = 'Connected' + (viewOnly ? ' (view only)' : '') + '. Click the screen to send keyboard input.'; tune(); }
+        else if (m.t === 'perf') { st.perf = m; }
         else if (m.t === 'fr') { chain = chain.then(() => { st.frames++; if (st.acted) { const d = performance.now() - st.acted; st.resp = st.resp ? st.resp * .7 + d * .3 : d; st.acted = 0; } send({ t: 'ack', n: m.n }); }); }
         else if (m.t === 'monitors') { showMonitors(m); }
         else if (m.t === 'clip') { clipFromPC(m); }
